@@ -91,3 +91,6 @@ npm run build
 5. `g_drive_update_sheet_values` - スプレッドシートの値を更新
 6. `g_drive_append_sheet_values` - スプレッドシートに値を追加
 7. `g_drive_get_doc_content` - Googleドキュメントの内容を取得
+8. `g_drive_get_spreadsheet_sheets` - スプレッドシートのシート一覧を取得
+9. `g_drive_get_all_sheets_data` - スプレッドシートの全シートデータを一括取得
+

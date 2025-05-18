@@ -154,6 +154,63 @@ async function getDocContent(auth: OAuth2Client, documentId: string): Promise<an
   }
 }
 
+// スプレッドシートのシート一覧を取得する関数
+async function getSpreadsheetSheets(auth: OAuth2Client, spreadsheetId: string): Promise<any[]> {
+  const sheets = google.sheets({ version: "v4", auth });
+  try {
+    const response = await sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: "sheets.properties",
+    });
+    
+    // シート名と基本情報を配列として返す
+    const sheetList = response.data.sheets?.map((sheet: any) => ({
+      title: sheet.properties?.title || "",
+      sheetId: sheet.properties?.sheetId || 0,
+      index: sheet.properties?.index || 0,
+      sheetType: sheet.properties?.sheetType || "GRID",
+      rowCount: sheet.properties?.gridProperties?.rowCount || 0,
+      columnCount: sheet.properties?.gridProperties?.columnCount || 0,
+    })) || [];
+    
+    return sheetList;
+  } catch (error) {
+    console.error("スプレッドシートのシート一覧取得エラー:", error);
+    throw error;
+  }
+}
+
+// スプレッドシートの全シートの内容を取得する関数
+async function getAllSheetsData(auth: OAuth2Client, spreadsheetId: string): Promise<Record<string, any[][]>> {
+  try {
+    // まずシート一覧を取得
+    const sheets = await getSpreadsheetSheets(auth, spreadsheetId);
+    
+    // 各シートの内容を取得
+    const result: Record<string, any[][]> = {};
+    
+    // 各シートに対して処理を実行
+    for (const sheet of sheets) {
+      try {
+        const sheetTitle = sheet.title;
+        const range = `${sheetTitle}!A:Z`; // A列からZ列までを対象にする
+        
+        const values = await getSheetValues(auth, spreadsheetId, range);
+        result[sheetTitle] = values;
+      } catch (error) {
+        console.error(`シート "${sheet.title}" のデータ取得エラー:`, error);
+        // エラーが発生したシートは空配列を設定
+        result[sheet.title] = [];
+      }
+    }
+    
+    return result;
+  } catch (error) {
+    console.error("スプレッドシートの全シート取得エラー:", error);
+    throw error;
+  }
+}
+
 // Googleドライブ内のファイル一覧を取得するツール
 server.tool(
   "g_drive_list_files",
@@ -496,6 +553,104 @@ server.tool(
           {
             type: "text",
             text: `ドキュメントの内容取得に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// スプレッドシートのシート一覧を取得するツール
+server.tool(
+  "g_drive_get_spreadsheet_sheets",
+  "Googleスプレッドシートのシート一覧を取得する",
+  {
+    spreadsheetId: z.string().describe("スプレッドシートのID"),
+  },
+  async ({ spreadsheetId }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const sheets = await getSpreadsheetSheets(auth, spreadsheetId);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "success",
+              sheets
+            }, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `スプレッドシートのシート一覧取得に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// スプレッドシートの全シートデータを取得するツール
+server.tool(
+  "g_drive_get_all_sheets_data",
+  "Googleスプレッドシートの全シートデータを取得する",
+  {
+    spreadsheetId: z.string().describe("スプレッドシートのID"),
+  },
+  async ({ spreadsheetId }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const allSheetsData = await getAllSheetsData(auth, spreadsheetId);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "success",
+              sheets: allSheetsData
+            }, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `スプレッドシートの全シートデータ取得に失敗しました: ${error.message || String(error)}`
           }
         ],
         isError: true
