@@ -154,6 +154,126 @@ async function getDocContent(auth: OAuth2Client, documentId: string): Promise<an
   }
 }
 
+// Googleドキュメントにテキストを挿入する関数
+async function insertTextToDoc(
+  auth: OAuth2Client,
+  documentId: string,
+  location: number,
+  text: string
+): Promise<any> {
+  const docs = google.docs({ version: "v1", auth });
+  try {
+    const response = await docs.documents.batchUpdate({
+      documentId,
+      requestBody: {
+        requests: [
+          {
+            insertText: {
+              location: {
+                index: location,
+              },
+              text,
+            },
+          },
+        ],
+      },
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error("Googleドキュメントへのテキスト挿入エラー:", error);
+    throw error;
+  }
+}
+
+// Googleドキュメントのテキストを置換する関数
+async function replaceTextInDoc(
+  auth: OAuth2Client,
+  documentId: string,
+  text: string,
+  replaceText: string,
+  matchCase: boolean = false
+): Promise<any> {
+  const docs = google.docs({ version: "v1", auth });
+  try {
+    const response = await docs.documents.batchUpdate({
+      documentId,
+      requestBody: {
+        requests: [
+          {
+            replaceAllText: {
+              containsText: {
+                text,
+                matchCase,
+              },
+              replaceText,
+            },
+          },
+        ],
+      },
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error("Googleドキュメントのテキスト置換エラー:", error);
+    throw error;
+  }
+}
+
+
+
+
+
+// Googleドキュメントに画像を挿入する関数
+async function insertImage(
+  auth: OAuth2Client,
+  documentId: string,
+  location: number,
+  imageUri: string,
+  width?: number,
+  height?: number
+): Promise<any> {
+  const docs = google.docs({ version: "v1", auth });
+  try {
+    const request: any = {
+      documentId,
+      requestBody: {
+        requests: [
+          {
+            insertInlineImage: {
+              location: {
+                index: location,
+              },
+              uri: imageUri,
+            },
+          },
+        ],
+      },
+    };
+    
+    // サイズ指定がある場合、設定を追加
+    if (width && height) {
+      request.requestBody.requests[0].insertInlineImage.objectSize = {
+        width: {
+          magnitude: width,
+          unit: "PT",
+        },
+        height: {
+          magnitude: height,
+          unit: "PT",
+        },
+      };
+    }
+    
+    const response = await docs.documents.batchUpdate(request);
+    
+    return response.data;
+  } catch (error) {
+    console.error("Googleドキュメントへの画像挿入エラー:", error);
+    throw error;
+  }
+}
+
 // スプレッドシートのシート一覧を取得する関数
 async function getSpreadsheetSheets(auth: OAuth2Client, spreadsheetId: string): Promise<any[]> {
   const sheets = google.sheets({ version: "v4", auth });
@@ -651,6 +771,175 @@ server.tool(
           {
             type: "text",
             text: `スプレッドシートの全シートデータ取得に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// Googleドキュメントにテキストを挿入するツール
+server.tool(
+  "g_drive_insert_text_to_doc",
+  "Googleドキュメントに指定位置にテキストを挿入する",
+  {
+    documentId: z.string().describe("ドキュメントのID"),
+    location: z.number().describe("テキストを挿入する位置（インデックス）"),
+    text: z.string().describe("挿入するテキスト"),
+  },
+  async ({ documentId, location, text }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const result = await insertTextToDoc(auth, documentId, location, text);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "success",
+              message: "ドキュメントにテキストを挿入しました",
+              result
+            }, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `ドキュメントへのテキスト挿入に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// Googleドキュメントのテキストを置換するツール
+server.tool(
+  "g_drive_replace_text_in_doc",
+  "Googleドキュメント内のテキストを置換する",
+  {
+    documentId: z.string().describe("ドキュメントのID"),
+    text: z.string().describe("置換対象のテキスト"),
+    replaceText: z.string().describe("置換後のテキスト"),
+    matchCase: z.boolean().optional().describe("大文字小文字を区別するかどうか（デフォルト: false）"),
+  },
+  async ({ documentId, text, replaceText, matchCase = false }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const result = await replaceTextInDoc(auth, documentId, text, replaceText, matchCase);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "success",
+              message: "ドキュメント内のテキストを置換しました",
+              result
+            }, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `ドキュメント内のテキスト置換に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+
+
+
+
+// Googleドキュメントに画像を挿入するツール
+server.tool(
+  "g_drive_insert_image",
+  "Googleドキュメントに画像を挿入する",
+  {
+    documentId: z.string().describe("ドキュメントのID"),
+    location: z.number().describe("画像を挿入する位置（インデックス）"),
+    imageUri: z.string().describe("画像のURI（URL、data URI、またはGoogleドライブのURI）"),
+    width: z.number().optional().describe("画像の幅（pt）"),
+    height: z.number().optional().describe("画像の高さ（pt）"),
+  },
+  async ({ 
+    documentId, 
+    location, 
+    imageUri,
+    width,
+    height
+  }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const result = await insertImage(auth, documentId, location, imageUri, width, height);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "success",
+              message: "ドキュメントに画像を挿入しました",
+              result
+            }, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `ドキュメントへの画像挿入に失敗しました: ${error.message || String(error)}`
           }
         ],
         isError: true

@@ -6,7 +6,7 @@ Model Context Protocol (MCP) を介してGoogle Driveにアクセスするため
 
 - Google Driveのファイル一覧の取得
 - Google Spreadsheets（スプレッドシート）の閲覧・編集
-- Google Docs（ドキュメント）の閲覧
+- Google Docs（ドキュメント）の閲覧・編集
 
 ## セットアップ
 
@@ -62,11 +62,11 @@ npm run build
 2. client_secret.jsonをcredentialsディレクトリに配置後、以下のコマンドでトークンを生成:
    ```
    cd mcp-google-drive
-   node simple-token-generator.js
+   node build/generate-token.js
    ```
    - このコマンドを実行すると、認証URLが表示されます
    - 認証用URLをブラウザで開き、Google認証を行います
-   - 認証が完了すると自動的に`mcp-google-drive/credentials/token.json`が生成されます
+   - 認証後、リダイレクトされたURLからcode=の後ろの部分をコピーし、コンソールに貼り付けます
    - 「トークンが正常に保存されました」と表示されれば認証は成功です
 
 3. Cursor SettingsのMCP Serversで「Add new global MCP server」を押下し、mcp.jsonに以下を追記
@@ -84,13 +84,24 @@ npm run build
 
 このMCPサーバーでは、以下のツールが利用可能です：
 
+### Google Drive関連
+
 1. `g_drive_list_files` - Googleドライブのファイル一覧を取得
 2. `g_drive_list_sheets` - Googleドライブ内のスプレッドシート一覧を取得
 3. `g_drive_list_docs` - Googleドライブ内のドキュメント一覧を取得
+
+### スプレッドシート関連
+
 4. `g_drive_get_sheet_values` - スプレッドシートから値を取得
 5. `g_drive_update_sheet_values` - スプレッドシートの値を更新
 6. `g_drive_append_sheet_values` - スプレッドシートに値を追加
-7. `g_drive_get_doc_content` - Googleドキュメントの内容を取得
-8. `g_drive_get_spreadsheet_sheets` - スプレッドシートのシート一覧を取得
-9. `g_drive_get_all_sheets_data` - スプレッドシートの全シートデータを一括取得
+7. `g_drive_get_spreadsheet_sheets` - スプレッドシートのシート一覧を取得
+8. `g_drive_get_all_sheets_data` - スプレッドシートの全シートデータを一括取得
+
+### ドキュメント関連
+
+9. `g_drive_get_doc_content` - Googleドキュメントの内容を取得
+10. `g_drive_insert_text_to_doc` - Googleドキュメントに指定位置にテキストを挿入
+11. `g_drive_replace_text_in_doc` - Googleドキュメント内のテキストを置換
+12. `g_drive_insert_image` - Googleドキュメントに画像を挿入
 
