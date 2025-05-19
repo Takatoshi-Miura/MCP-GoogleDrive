@@ -2,9 +2,6 @@ import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import fs from "fs";
 import path from "path";
-import http from "http";
-import url from "url";
-import open from "open";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 
@@ -81,117 +78,7 @@ export async function getTokenFromCode(oAuth2Client: OAuth2Client, code: string,
 }
 
 /**
- * ブラウザでURLを開く
- */
-async function openBrowser(url: string): Promise<void> {
-  try {
-    await open(url);
-  } catch (error) {
-    console.error("ブラウザを開く際にエラーが発生しました:", error);
-    console.log("手動で次のURLをブラウザで開いてください:");
-    console.log(url);
-  }
-}
-
-/**
- * ローカルサーバーを起動してOAuth認証を処理
- */
-export function startLocalAuthServer(oAuth2Client: OAuth2Client): Promise<void> {
-  return new Promise((resolve, reject) => {
-    // ランダムなポートでローカルサーバーを作成
-    const server = http.createServer(async (req, res) => {
-      try {
-        // リクエストURLからコードを取得
-        const queryObject = url.parse(req.url || "", true).query;
-        const code = queryObject.code as string;
-
-        if (code) {
-          // 成功レスポンスを返す
-          res.writeHead(200, { "Content-Type": "text/html" });
-          res.end(`
-            <html>
-              <body>
-                <h1>認証に成功しました！</h1>
-                <p>このウィンドウを閉じて、アプリケーションに戻ってください。</p>
-              </body>
-            </html>
-          `);
-          
-          // サーバーを閉じる前に情報を取得
-          let port = 0;
-          const serverAddress = server.address();
-          if (serverAddress && typeof serverAddress === 'object') {
-            port = serverAddress.port;
-          }
-          
-          server.close();
-          
-          if (port === 0) {
-            reject(new Error("サーバーポートの取得に失敗しました"));
-            return;
-          }
-          
-          const redirectUri = `http://localhost:${port}`;
-          
-          // コードからトークンを取得
-          try {
-            await getTokenFromCode(oAuth2Client, code, redirectUri);
-            resolve();
-          } catch (error) {
-            reject(error);
-          }
-        } else {
-          // エラーレスポンスを返す
-          res.writeHead(400, { "Content-Type": "text/html" });
-          res.end(`
-            <html>
-              <body>
-                <h1>認証に失敗しました。</h1>
-                <p>認証コードが見つかりませんでした。もう一度やり直してください。</p>
-              </body>
-            </html>
-          `);
-          reject(new Error("認証コードが見つかりませんでした"));
-        }
-      } catch (error) {
-        console.error("認証処理エラー:", error);
-        res.writeHead(500, { "Content-Type": "text/html" });
-        res.end(`
-          <html>
-            <body>
-              <h1>エラーが発生しました。</h1>
-              <p>${error}</p>
-            </body>
-          </html>
-        `);
-        reject(error);
-      }
-    });
-
-    // サーバーをランダムポートでリッスン
-    server.listen(0, () => {
-      // サーバーのアドレスを取得
-      const serverAddress = server.address();
-      if (serverAddress && typeof serverAddress === 'object') {
-        const port = serverAddress.port;
-        const redirectUri = `http://localhost:${port}`;
-        console.log(`ローカル認証サーバーが起動しました: ${redirectUri}`);
-        
-        // 認証URLを生成して開く
-        const authUrl = getAuthUrl(oAuth2Client, redirectUri);
-        console.log(`ブラウザで次のURLを開いて認証してください: ${authUrl}`);
-        
-        // ブラウザを開く
-        openBrowser(authUrl);
-      } else {
-        reject(new Error("サーバーアドレスの取得に失敗しました"));
-      }
-    });
-  });
-}
-
-/**
- * OAuth認証フローを実行してトークンを取得
+ * 保存されたトークンからOAuth2クライアントを取得
  */
 export async function authorize(): Promise<OAuth2Client | null> {
   const oAuth2Client = createOAuth2Client();
@@ -219,6 +106,7 @@ export async function authorize(): Promise<OAuth2Client | null> {
           return oAuth2Client;
         } catch (refreshError) {
           console.error("トークン更新エラー:", refreshError);
+          return null;
         }
       }
     } catch (error) {
@@ -226,31 +114,7 @@ export async function authorize(): Promise<OAuth2Client | null> {
     }
   }
   
-  // 新しいトークンを取得するためにOAuth認証フローを開始
-  console.log("OAuth認証フローを開始します...");
-  try {
-    await startLocalAuthServer(oAuth2Client);
-    return oAuth2Client;
-  } catch (error) {
-    console.error("OAuth認証エラー:", error);
-    return null;
-  }
-}
-
-/**
- * トークン生成コマンドを実行する関数
- */
-export async function generateToken(): Promise<void> {
-  console.log("Google API認証トークンを生成します...");
-  
-  try {
-    const authClient = await authorize();
-    if (authClient) {
-      console.log("トークンの生成に成功しました！");
-    } else {
-      console.error("トークンの生成に失敗しました。");
-    }
-  } catch (error) {
-    console.error("トークン生成エラー:", error);
-  }
+  // トークンファイルがない場合、nullを返す
+  console.log("トークンファイルが見つかりません。手動認証を実行してください。");
+  return null;
 } 

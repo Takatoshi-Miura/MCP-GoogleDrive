@@ -69,26 +69,8 @@ async function manualGenerateToken(): Promise<void> {
   }
 }
 
-// 自動認証を試みて、失敗した場合は手動認証に切り替える
+// メイン関数を実行
 async function main(): Promise<void> {
-  // コマンドライン引数をチェック
-  const isAuto = !process.argv.includes("--manual");
-  
-  if (isAuto) {
-    console.log("自動認証モードを試行します...");
-    try {
-      // 自動認証を試みる
-      const auth = await import("./auth.js");
-      await auth.generateToken();
-      console.log("自動認証が完了しました。");
-      return;
-    } catch (error) {
-      console.error("自動認証に失敗しました:", error);
-      console.log("手動認証モードに切り替えます...");
-    }
-  }
-  
-  // 自動認証に失敗したか、手動モードが指定された場合
   await manualGenerateToken();
 }
 

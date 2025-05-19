@@ -4,27 +4,17 @@
 console.log('Google API認証トークン生成ツール');
 console.log('================================');
 
-console.log('自動認証を開始します...');
+console.log('手動認証モードを開始します...');
 import('./build/generate-token.js')
   .then((module) => {
+    // --manualフラグを付けて実行
     if (module.default) {
-      module.default();
+      module.default('--manual');
     } else {
-      // デフォルトエクスポートがない場合
       console.log('認証プロセスを実行中...');
     }
   })
   .catch((error) => {
     console.error('エラーが発生しました:', error);
-    // 自動認証に失敗した場合
-    console.log('\n手動認証に切り替えます...');
-    // 再度実行（--autoフラグなし）
-    import('./build/generate-token.js')
-      .then(() => {
-        // generate-token.js側で処理が行われるため、ここでは何もしない
-      })
-      .catch((error) => {
-        console.error('手動認証でもエラーが発生しました:', error);
-        process.exit(1);
-      });
+    process.exit(1);
   }); 
