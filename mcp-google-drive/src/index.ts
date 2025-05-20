@@ -21,7 +21,8 @@ const TOKEN_PATH = process.env.TOKEN_PATH || path.join(__dirname, "../credential
 const SCOPES = [
   "https://www.googleapis.com/auth/drive",
   "https://www.googleapis.com/auth/spreadsheets",
-  "https://www.googleapis.com/auth/documents"
+  "https://www.googleapis.com/auth/documents",
+  "https://www.googleapis.com/auth/presentations"
 ];
 
 // MCPサーバーの作成
@@ -220,10 +221,6 @@ async function replaceTextInDoc(
   }
 }
 
-
-
-
-
 // Googleドキュメントに画像を挿入する関数
 async function insertImage(
   auth: OAuth2Client,
@@ -270,6 +267,105 @@ async function insertImage(
     return response.data;
   } catch (error) {
     console.error("Googleドキュメントへの画像挿入エラー:", error);
+    throw error;
+  }
+}
+
+// Googleスライドのコンテンツを取得する関数
+async function getPresentationContent(auth: OAuth2Client, presentationId: string): Promise<any> {
+  const slides = google.slides({ version: "v1", auth });
+  try {
+    const response = await slides.presentations.get({
+      presentationId,
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error("Googleスライドの内容取得エラー:", error);
+    throw error;
+  }
+}
+
+// Googleスライドの特定ページを画像として取得する関数
+async function getSlideImageThumbnail(auth: OAuth2Client, presentationId: string, pageObjectId?: string): Promise<any> {
+  try {
+    // まずプレゼンテーションの内容を取得してページIDを確認
+    const presentation = await getPresentationContent(auth, presentationId);
+    
+    // ページIDが指定されていない場合は最初のページを使用
+    let targetPageId = pageObjectId;
+    if (!targetPageId && presentation.slides && presentation.slides.length > 0) {
+      targetPageId = presentation.slides[0].objectId;
+    }
+    
+    if (!targetPageId) {
+      throw new Error("スライドページが見つかりません");
+    }
+    
+    // Driveのサムネイル取得APIを使用して画像を取得
+    const drive = google.drive({ version: "v3", auth });
+    const response = await drive.files.get({
+      fileId: presentationId,
+      fields: "thumbnailLink",
+    });
+    
+    return {
+      thumbnailLink: response.data.thumbnailLink,
+      presentationId,
+      pageObjectId: targetPageId
+    };
+  } catch (error) {
+    console.error("スライド画像取得エラー:", error);
+    throw error;
+  }
+}
+
+// Googleスライドの特定ページを取得する関数
+async function getSlideByPageNumber(auth: OAuth2Client, presentationId: string, pageNumber: number): Promise<any> {
+  try {
+    // プレゼンテーション全体を取得
+    const presentation = await getPresentationContent(auth, presentationId);
+    
+    // 存在するスライド数を確認
+    if (!presentation.slides || presentation.slides.length === 0) {
+      throw new Error("スライドが存在しません");
+    }
+    
+    // ページ番号を検証（1から始まる番号を0から始まるインデックスに変換）
+    const pageIndex = pageNumber - 1;
+    if (pageIndex < 0 || pageIndex >= presentation.slides.length) {
+      throw new Error(`指定されたページ番号（${pageNumber}）は範囲外です。スライド数: ${presentation.slides.length}`);
+    }
+    
+    // 特定のページを返す
+    return {
+      presentation: {
+        presentationId,
+        title: presentation.title,
+        totalSlides: presentation.slides.length
+      },
+      slide: presentation.slides[pageIndex]
+    };
+  } catch (error) {
+    console.error("スライドページ取得エラー:", error);
+    throw error;
+  }
+}
+
+// Googleスライドのコメントを取得する関数
+async function getPresentationComments(auth: OAuth2Client, presentationId: string): Promise<any> {
+  const drive = google.drive({ version: "v3", auth });
+  try {
+    // スライドのコメントを取得するにはDrive APIを使用
+    const response = await drive.comments.list({
+      fileId: presentationId,
+      fields: "comments(id,content,author,createdTime,modifiedTime,resolved,quotedFileContent)",
+      includeDeleted: false
+    });
+    
+    return response.data.comments || [];
+  } catch (error) {
+    console.error("スライドコメント取得エラー:", error);
     throw error;
   }
 }
@@ -884,10 +980,6 @@ server.tool(
   }
 );
 
-
-
-
-
 // Googleドキュメントに画像を挿入するツール
 server.tool(
   "g_drive_insert_image",
@@ -940,6 +1032,600 @@ server.tool(
           {
             type: "text",
             text: `ドキュメントへの画像挿入に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// Googleドライブ内のスライド一覧を取得するツール
+server.tool(
+  "g_drive_list_presentations",
+  "Googleドライブ内のスライドの一覧を取得する",
+  {
+    random_string: z.string().optional().describe("Dummy parameter for no-parameter tools"),
+  },
+  async ({}) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const query = "mimeType='application/vnd.google-apps.presentation'";
+      const files = await listFiles(auth, query);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "success",
+              presentations: files
+            }, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `スライド一覧の取得に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// Googleスライドの内容を取得するツール
+server.tool(
+  "g_drive_get_presentation_content",
+  "Googleスライドの内容を取得する",
+  {
+    presentationId: z.string().describe("スライドのID"),
+  },
+  async ({ presentationId }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const presentationContent = await getPresentationContent(auth, presentationId);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "success",
+              presentation: presentationContent
+            }, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `スライドの内容取得に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// Googleスライドの特定ページを画像として取得するツール
+server.tool(
+  "g_drive_get_slide_thumbnail",
+  "Googleスライドの特定ページのサムネイル画像を取得する",
+  {
+    presentationId: z.string().describe("スライドのID"),
+    pageObjectId: z.string().optional().describe("取得するスライドページのID（指定しない場合は最初のページ）"),
+  },
+  async ({ presentationId, pageObjectId }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const thumbnailInfo = await getSlideImageThumbnail(auth, presentationId, pageObjectId);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "success",
+              thumbnail: thumbnailInfo
+            }, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `スライドのサムネイル取得に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// Googleスライドの特定ページを番号指定で取得するツール
+server.tool(
+  "g_drive_get_slide_by_page_number",
+  "Googleスライドの特定ページを番号指定で取得する",
+  {
+    presentationId: z.string().describe("スライドのID"),
+    pageNumber: z.number().describe("取得するスライドのページ番号（1から始まる）"),
+  },
+  async ({ presentationId, pageNumber }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const slideData = await getSlideByPageNumber(auth, presentationId, pageNumber);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "success",
+              data: slideData
+            }, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `スライドの取得に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// Googleスライドのコメントを取得するツール
+server.tool(
+  "g_drive_get_presentation_comments",
+  "Googleスライドのコメントを取得する",
+  {
+    presentationId: z.string().describe("スライドのID"),
+  },
+  async ({ presentationId }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const comments = await getPresentationComments(auth, presentationId);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "success",
+              comments
+            }, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `スライドのコメント取得に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// Googleスライドのテキストのみを抽出する関数
+async function getPresentationText(auth: OAuth2Client, presentationId: string): Promise<string> {
+  try {
+    // プレゼンテーション全体を取得
+    const presentation = await getPresentationContent(auth, presentationId);
+    
+    // テキスト抽出結果
+    let extractedText = "";
+    
+    // タイトルを追加
+    if (presentation.title) {
+      extractedText += `タイトル: ${presentation.title}\n\n`;
+    }
+    
+    // スライドが存在しない場合
+    if (!presentation.slides || presentation.slides.length === 0) {
+      return extractedText + "スライドが存在しません。";
+    }
+    
+    // 各スライドのテキストを抽出
+    presentation.slides.forEach((slide: any, index: number) => {
+      // スライド番号を追加
+      extractedText += `===== スライド ${index + 1} =====\n`;
+      
+      // スライドタイトルがあれば追加（通常、最初のテキストボックスがタイトル）
+      let slideTitle = "";
+      if (slide.pageElements && slide.pageElements.length > 0) {
+        const titleElement = slide.pageElements.find((element: any) => 
+          element.shape && element.shape.shapeType === 'TEXT_BOX' && 
+          element.shape.text && element.shape.text.textElements
+        );
+        
+        if (titleElement && titleElement.shape.text.textElements) {
+          const titleText = titleElement.shape.text.textElements
+            .filter((textElement: any) => textElement.textRun && textElement.textRun.content)
+            .map((textElement: any) => textElement.textRun.content)
+            .join("");
+          
+          if (titleText.trim()) {
+            slideTitle = titleText.trim();
+            extractedText += `タイトル: ${slideTitle}\n`;
+          }
+        }
+      }
+      
+      // すべてのページ要素からテキストを抽出
+      if (slide.pageElements) {
+        slide.pageElements.forEach((element: any) => {
+          if (element.shape && element.shape.text && element.shape.text.textElements) {
+            // テキスト要素から内容を取得
+            const elementText = element.shape.text.textElements
+              .filter((textElement: any) => textElement.textRun && textElement.textRun.content)
+              .map((textElement: any) => textElement.textRun.content)
+              .join("");
+            
+            if (elementText.trim() && elementText.trim() !== slideTitle) {
+              extractedText += elementText;
+            }
+          }
+          
+          // テーブルのテキストを抽出
+          if (element.table && element.table.tableRows) {
+            element.table.tableRows.forEach((row: any) => {
+              if (row.tableCells) {
+                const rowText = row.tableCells
+                  .map((cell: any) => {
+                    if (cell.text && cell.text.textElements) {
+                      return cell.text.textElements
+                        .filter((textElement: any) => textElement.textRun && textElement.textRun.content)
+                        .map((textElement: any) => textElement.textRun.content)
+                        .join("");
+                    }
+                    return "";
+                  })
+                  .filter((text: string) => text.trim())
+                  .join(" | ");
+                
+                if (rowText.trim()) {
+                  extractedText += `${rowText}\n`;
+                }
+              }
+            });
+          }
+        });
+      }
+      
+      // スライドノートがあれば抽出
+      if (slide.slideProperties && slide.slideProperties.notesPage && 
+          slide.slideProperties.notesPage.pageElements) {
+        const notes = slide.slideProperties.notesPage.pageElements
+          .filter((element: any) => 
+            element.shape && element.shape.shapeType === 'TEXT_BOX' && 
+            element.shape.text && element.shape.text.textElements
+          )
+          .map((element: any) => {
+            return element.shape.text.textElements
+              .filter((textElement: any) => textElement.textRun && textElement.textRun.content)
+              .map((textElement: any) => textElement.textRun.content)
+              .join("");
+          })
+          .filter((text: string) => text.trim())
+          .join("\n");
+        
+        if (notes.trim()) {
+          extractedText += `\nノート:\n${notes.trim()}\n`;
+        }
+      }
+      
+      extractedText += "\n\n";
+    });
+    
+    return extractedText;
+  } catch (error) {
+    console.error("スライドテキスト抽出エラー:", error);
+    throw error;
+  }
+}
+
+// Googleスライドのテキストのみを取得するツール
+server.tool(
+  "g_drive_get_presentation_text",
+  "Googleスライドに含まれるテキストデータのみを取得する",
+  {
+    presentationId: z.string().describe("スライドのID"),
+  },
+  async ({ presentationId }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const textContent = await getPresentationText(auth, presentationId);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "success",
+              text: textContent
+            }, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `スライドのテキスト取得に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// Googleドキュメントのテキストのみを抽出する関数
+async function getDocumentText(auth: OAuth2Client, documentId: string): Promise<string> {
+  try {
+    // ドキュメント全体を取得
+    const document = await getDocContent(auth, documentId);
+    
+    // テキスト抽出結果
+    let extractedText = "";
+    
+    // タイトルを追加
+    if (document.title) {
+      extractedText += `タイトル: ${document.title}\n\n`;
+    }
+    
+    // ドキュメントが存在しない場合
+    if (!document.body || !document.body.content) {
+      return extractedText + "ドキュメントの内容が存在しません。";
+    }
+    
+    // ドキュメント内の各要素からテキストを抽出
+    for (const element of document.body.content) {
+      // 段落要素の場合
+      if (element.paragraph) {
+        const paragraph = element.paragraph;
+        
+        // 段落スタイルの情報を確認
+        const paragraphStyle = paragraph.paragraphStyle || {};
+        const namedStyleType = paragraphStyle.namedStyleType || "";
+        
+        // 見出しスタイルの場合は特別な表示を追加
+        if (namedStyleType.includes("HEADING")) {
+          extractedText += "\n"; // 見出し前に空行を追加
+        }
+        
+        // 段落内の各要素（テキスト実行など）からテキストを抽出
+        let paragraphText = "";
+        if (paragraph.elements) {
+          for (const textElement of paragraph.elements) {
+            if (textElement.textRun && textElement.textRun.content) {
+              paragraphText += textElement.textRun.content;
+            }
+          }
+        }
+        
+        // 段落テキストを追加
+        extractedText += paragraphText;
+        
+        // 見出しスタイルの場合は特別な表示を追加
+        if (namedStyleType.includes("HEADING")) {
+          extractedText += "\n"; // 見出し後に空行を追加
+        }
+      }
+      
+      // テーブル要素の場合
+      else if (element.table) {
+        const table = element.table;
+        extractedText += "\n"; // テーブル前に空行を追加
+        
+        // テーブルの行ごとに処理
+        if (table.tableRows) {
+          for (const row of table.tableRows) {
+            let rowText = "";
+            
+            // 行内のセルごとに処理
+            if (row.tableCells) {
+              for (const cell of row.tableCells) {
+                let cellText = "";
+                
+                // セル内のコンテンツを処理
+                if (cell.content) {
+                  for (const content of cell.content) {
+                    if (content.paragraph && content.paragraph.elements) {
+                      for (const textElement of content.paragraph.elements) {
+                        if (textElement.textRun && textElement.textRun.content) {
+                          cellText += textElement.textRun.content.trim();
+                        }
+                      }
+                    }
+                  }
+                }
+                
+                // セルテキストをパイプ区切りで追加
+                rowText += (rowText ? " | " : "") + cellText;
+              }
+            }
+            
+            // 行テキストを追加
+            if (rowText) {
+              extractedText += rowText + "\n";
+            }
+          }
+        }
+        
+        extractedText += "\n"; // テーブル後に空行を追加
+      }
+      
+      // リスト要素の場合
+      else if (element.paragraph && element.paragraph.bullet) {
+        const paragraph = element.paragraph;
+        const bullet = paragraph.bullet;
+        
+        // リストアイテムのテキストを抽出
+        let listItemText = "";
+        if (paragraph.elements) {
+          for (const textElement of paragraph.elements) {
+            if (textElement.textRun && textElement.textRun.content) {
+              listItemText += textElement.textRun.content;
+            }
+          }
+        }
+        
+        // ネストレベルに応じたインデントを追加
+        const nestingLevel = bullet.nestingLevel || 0;
+        const indent = "  ".repeat(nestingLevel);
+        
+        // 箇条書きスタイルを適用
+        extractedText += `${indent}• ${listItemText}`;
+      }
+    }
+    
+    // 余分な改行を整理
+    extractedText = extractedText.replace(/\n\n\n+/g, "\n\n");
+    
+    return extractedText;
+  } catch (error) {
+    console.error("ドキュメントテキスト抽出エラー:", error);
+    throw error;
+  }
+}
+
+// Googleドキュメントのテキストのみを取得するツール
+server.tool(
+  "g_drive_get_doc_text",
+  "Googleドキュメントに含まれるテキストデータのみを取得する",
+  {
+    documentId: z.string().describe("ドキュメントのID"),
+  },
+  async ({ documentId }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const textContent = await getDocumentText(auth, documentId);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "success",
+              text: textContent
+            }, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `ドキュメントのテキスト取得に失敗しました: ${error.message || String(error)}`
           }
         ],
         isError: true

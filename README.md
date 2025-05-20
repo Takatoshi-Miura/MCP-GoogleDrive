@@ -7,6 +7,7 @@ Model Context Protocol (MCP) を介してGoogle Driveにアクセスするため
 - Google Driveのファイル一覧の取得
 - Google Spreadsheets（スプレッドシート）の閲覧・編集
 - Google Docs（ドキュメント）の閲覧・編集
+- Google Slides（スライド）の閲覧
 
 ## セットアップ
 
@@ -46,6 +47,7 @@ npm run build
    - Google Drive API
    - Google Sheets API
    - Google Docs API
+   - Google Slides API
 
 3. 左側のメニューから「APIとサービス」>「認証情報」を選択します。
 
@@ -89,19 +91,29 @@ npm run build
 1. `g_drive_list_files` - Googleドライブのファイル一覧を取得
 2. `g_drive_list_sheets` - Googleドライブ内のスプレッドシート一覧を取得
 3. `g_drive_list_docs` - Googleドライブ内のドキュメント一覧を取得
+4. `g_drive_list_presentations` - Googleドライブ内のスライド一覧を取得
 
 ### スプレッドシート関連
 
-4. `g_drive_get_sheet_values` - スプレッドシートから値を取得
-5. `g_drive_update_sheet_values` - スプレッドシートの値を更新
-6. `g_drive_append_sheet_values` - スプレッドシートに値を追加
-7. `g_drive_get_spreadsheet_sheets` - スプレッドシートのシート一覧を取得
-8. `g_drive_get_all_sheets_data` - スプレッドシートの全シートデータを一括取得
+5. `g_drive_get_sheet_values` - スプレッドシートから値を取得
+6. `g_drive_update_sheet_values` - スプレッドシートの値を更新
+7. `g_drive_append_sheet_values` - スプレッドシートに値を追加
+8. `g_drive_get_spreadsheet_sheets` - スプレッドシートのシート一覧を取得
+9. `g_drive_get_all_sheets_data` - スプレッドシートの全シートデータを一括取得
 
 ### ドキュメント関連
 
-9. `g_drive_get_doc_content` - Googleドキュメントの内容を取得
-10. `g_drive_insert_text_to_doc` - Googleドキュメントに指定位置にテキストを挿入
-11. `g_drive_replace_text_in_doc` - Googleドキュメント内のテキストを置換
-12. `g_drive_insert_image` - Googleドキュメントに画像を挿入
+10. `g_drive_get_doc_content` - Googleドキュメントの内容を取得
+11. `g_drive_insert_text_to_doc` - Googleドキュメントに指定位置にテキストを挿入
+12. `g_drive_replace_text_in_doc` - Googleドキュメント内のテキストを置換
+13. `g_drive_insert_image` - Googleドキュメントに画像を挿入
+14. `g_drive_get_doc_text` - Googleドキュメントに含まれるテキストデータのみを取得（要約用）
+
+### スライド関連
+
+15. `g_drive_get_presentation_content` - Googleスライドの内容を取得
+16. `g_drive_get_slide_thumbnail` - Googleスライドの特定ページのサムネイル画像を取得
+17. `g_drive_get_slide_by_page_number` - Googleスライドの特定ページを番号指定で取得
+18. `g_drive_get_presentation_comments` - Googleスライドのコメントを取得
+19. `g_drive_get_presentation_text` - Googleスライドに含まれるテキストデータのみを取得（要約用）
 
