@@ -1634,6 +1634,126 @@ server.tool(
   }
 );
 
+// Googleスプレッドシートのテキストのみを抽出する関数
+async function getSpreadsheetText(auth: OAuth2Client, spreadsheetId: string): Promise<string> {
+  try {
+    // スプレッドシートの全シートデータを取得
+    const allSheetsData = await getAllSheetsData(auth, spreadsheetId);
+    
+    // スプレッドシートのメタデータを取得してタイトルを表示
+    const sheets = google.sheets({ version: "v4", auth });
+    const spreadsheetMetadata = await sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: "properties.title"
+    });
+    
+    // テキスト抽出結果
+    let extractedText = "";
+    
+    // タイトルを追加
+    if (spreadsheetMetadata.data.properties?.title) {
+      extractedText += `タイトル: ${spreadsheetMetadata.data.properties.title}\n\n`;
+    }
+    
+    // データが存在しない場合
+    if (!allSheetsData || Object.keys(allSheetsData).length === 0) {
+      return extractedText + "スプレッドシートにデータが存在しません。";
+    }
+    
+    // 各シートのデータをテキスト形式で追加
+    for (const [sheetName, values] of Object.entries(allSheetsData)) {
+      if (!values || values.length === 0) {
+        continue; // データがないシートはスキップ
+      }
+      
+      // シート名を追加
+      extractedText += `===== シート: ${sheetName} =====\n\n`;
+      
+      // 各行のデータをテキスト形式で変換
+      for (const row of values) {
+        if (!row || row.length === 0) {
+          continue; // 空の行はスキップ
+        }
+        
+        // 行の各セルをパイプ区切りでテキスト変換
+        const rowText = row.map((cell: any) => {
+          // nullやundefinedの場合は空文字に変換
+          if (cell === null || cell === undefined) {
+            return "";
+          }
+          // 数値や真偽値などを文字列に変換
+          return String(cell);
+        }).join(" | ");
+        
+        // 行テキストを追加
+        if (rowText.trim()) {
+          extractedText += rowText + "\n";
+        }
+      }
+      
+      // シートの区切りとして空行を追加
+      extractedText += "\n\n";
+    }
+    
+    // 余分な改行を整理
+    extractedText = extractedText.replace(/\n\n\n+/g, "\n\n");
+    
+    return extractedText;
+  } catch (error) {
+    console.error("スプレッドシートテキスト抽出エラー:", error);
+    throw error;
+  }
+}
+
+// Googleスプレッドシートのテキストのみを取得するツール
+server.tool(
+  "g_drive_get_spreadsheet_text",
+  "Googleスプレッドシートのテキストのみを取得する",
+  {
+    spreadsheetId: z.string().describe("スプレッドシートのID"),
+  },
+  async ({ spreadsheetId }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const textContent = await getSpreadsheetText(auth, spreadsheetId);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "success",
+              text: textContent
+            }, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `スプレッドシートのテキスト取得に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
 // メイン関数
 async function main() {
   try {

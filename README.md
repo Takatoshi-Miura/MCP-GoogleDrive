@@ -100,20 +100,21 @@ npm run build
 7. `g_drive_append_sheet_values` - スプレッドシートに値を追加
 8. `g_drive_get_spreadsheet_sheets` - スプレッドシートのシート一覧を取得
 9. `g_drive_get_all_sheets_data` - スプレッドシートの全シートデータを一括取得
+10. `g_drive_get_spreadsheet_text` - スプレッドシートに含まれるテキストデータのみを取得（要約用）
 
 ### ドキュメント関連
 
-10. `g_drive_get_doc_content` - Googleドキュメントの内容を取得
-11. `g_drive_insert_text_to_doc` - Googleドキュメントに指定位置にテキストを挿入
-12. `g_drive_replace_text_in_doc` - Googleドキュメント内のテキストを置換
-13. `g_drive_insert_image` - Googleドキュメントに画像を挿入
-14. `g_drive_get_doc_text` - Googleドキュメントに含まれるテキストデータのみを取得（要約用）
+11. `g_drive_get_doc_content` - Googleドキュメントの内容を取得
+12. `g_drive_insert_text_to_doc` - Googleドキュメントに指定位置にテキストを挿入
+13. `g_drive_replace_text_in_doc` - Googleドキュメント内のテキストを置換
+14. `g_drive_insert_image` - Googleドキュメントに画像を挿入
+15. `g_drive_get_doc_text` - Googleドキュメントに含まれるテキストデータのみを取得（要約用）
 
 ### スライド関連
 
-15. `g_drive_get_presentation_content` - Googleスライドの内容を取得
-16. `g_drive_get_slide_thumbnail` - Googleスライドの特定ページのサムネイル画像を取得
-17. `g_drive_get_slide_by_page_number` - Googleスライドの特定ページを番号指定で取得
-18. `g_drive_get_presentation_comments` - Googleスライドのコメントを取得
-19. `g_drive_get_presentation_text` - Googleスライドに含まれるテキストデータのみを取得（要約用）
+16. `g_drive_get_presentation_content` - Googleスライドの内容を取得
+17. `g_drive_get_slide_thumbnail` - Googleスライドの特定ページのサムネイル画像を取得
+18. `g_drive_get_slide_by_page_number` - Googleスライドの特定ページを番号指定で取得
+19. `g_drive_get_presentation_comments` - Googleスライドのコメントを取得
+20. `g_drive_get_presentation_text` - Googleスライドに含まれるテキストデータのみを取得（要約用）
 
