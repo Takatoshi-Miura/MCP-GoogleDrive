@@ -8,6 +8,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 import { authorize } from "./auth.js";
+import * as pdfParse from "pdf-parse";
+const pdf = pdfParse.default || pdfParse;
 
 // ESM用にファイルパスを取得
 const __filename = fileURLToPath(import.meta.url);
@@ -423,6 +425,78 @@ async function getAllSheetsData(auth: OAuth2Client, spreadsheetId: string): Prom
     return result;
   } catch (error) {
     console.error("スプレッドシートの全シート取得エラー:", error);
+    throw error;
+  }
+}
+
+// GoogleドライブのPDFからテキストを抽出する関数
+async function getPdfText(auth: OAuth2Client, fileId: string): Promise<string> {
+  try {
+    const drive = google.drive({ version: "v3", auth });
+    
+    // PDFファイルの取得
+    const response = await drive.files.get({
+      fileId: fileId,
+      alt: 'media',
+    }, { responseType: 'arraybuffer' });
+    
+    if (!response.data) {
+      throw new Error("PDFデータの取得に失敗しました");
+    }
+    
+    // PDFファイルをバッファとして取得
+    const pdfBuffer = Buffer.from(response.data as ArrayBuffer);
+    
+    // PDFからテキストを抽出（エラーハンドリングを強化）
+    let data: any;
+    try {
+      // pdf-parseをより安全に呼び出す
+      data = await new Promise((resolve, reject) => {
+        try {
+          const result = pdf(pdfBuffer);
+          resolve(result);
+        } catch (err) {
+          reject(err);
+        }
+      });
+    } catch (error) {
+      console.error("PDFパース中にエラーが発生しました:", error);
+      throw new Error("PDFからテキストを抽出できませんでした");
+    }
+    
+    // ファイルの情報を取得
+    const fileInfo = await drive.files.get({
+      fileId: fileId,
+      fields: "name,createdTime,modifiedTime,owners"
+    });
+    
+    // 結果のテキストを整形
+    let extractedText = "";
+    
+    // ファイル情報を追加
+    if (fileInfo.data.name) {
+      extractedText += `ファイル名: ${fileInfo.data.name}\n`;
+    }
+    if (fileInfo.data.createdTime) {
+      extractedText += `作成日時: ${fileInfo.data.createdTime}\n`;
+    }
+    if (fileInfo.data.modifiedTime) {
+      extractedText += `更新日時: ${fileInfo.data.modifiedTime}\n`;
+    }
+    if (fileInfo.data.owners && fileInfo.data.owners.length > 0) {
+      extractedText += `所有者: ${fileInfo.data.owners[0].displayName || fileInfo.data.owners[0].emailAddress}\n`;
+    }
+    
+    extractedText += `\n--- PDFコンテンツ ---\n\n`;
+    // data.textが存在することを確認
+    extractedText += data.text || "PDFからテキストを抽出できませんでした";
+    
+    // 余分な改行を整理
+    extractedText = extractedText.replace(/\n\n\n+/g, "\n\n");
+    
+    return extractedText;
+  } catch (error) {
+    console.error("PDF抽出エラー:", error);
     throw error;
   }
 }
@@ -1746,6 +1820,55 @@ server.tool(
           {
             type: "text",
             text: `スプレッドシートのテキスト取得に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// GoogleドライブのPDFテキストを取得するツール
+server.tool(
+  "g_drive_get_pdf_text",
+  "GoogleドライブにあるPDFファイルのテキスト情報を取得する",
+  {
+    fileId: z.string().describe("PDFファイルのID"),
+  },
+  async ({ fileId }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const textContent = await getPdfText(auth, fileId);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "success",
+              text: textContent
+            }, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `PDFファイルのテキスト取得に失敗しました: ${error.message || String(error)}`
           }
         ],
         isError: true
