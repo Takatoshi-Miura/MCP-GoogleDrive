@@ -8,7 +8,6 @@ Model Context Protocol (MCP) を介してGoogle Driveにアクセスするため
 - Google Spreadsheets（スプレッドシート）の閲覧・編集
 - Google Docs（ドキュメント）の閲覧・編集
 - Google Slides（スライド）の閲覧
-- PDF文書からのテキスト抽出
 
 ## セットアップ
 
@@ -118,8 +117,4 @@ npm run build
 18. `g_drive_get_slide_by_page_number` - Googleスライドの特定ページを番号指定で取得
 19. `g_drive_get_presentation_comments` - Googleスライドのコメントを取得
 20. `g_drive_get_presentation_text` - Googleスライドに含まれるテキストデータのみを取得（要約用）
-
-### PDF関連
-
-21. `g_drive_get_pdf_text` - GoogleドライブにあるPDFファイルのテキスト情報を取得（要約用）
 
