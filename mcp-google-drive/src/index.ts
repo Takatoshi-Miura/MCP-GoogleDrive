@@ -140,15 +140,70 @@ async function appendSheetValues(
   }
 }
 
-// Googleドキュメントの内容を取得する関数
+// Googleドキュメントの内容を取得する関数（タブ別にテキストを統合）
 async function getDocContent(auth: OAuth2Client, documentId: string): Promise<any> {
-  const docs = google.docs({ version: "v1", auth });
   try {
+    // まずドキュメントのタブ一覧を取得
+    const tabs = await getDocumentTabs(auth, documentId);
+    
+    // ドキュメントの基本情報を取得
+    const docs = google.docs({ version: "v1", auth });
     const response = await docs.documents.get({
       documentId,
+      fields: "documentId,title,revisionId"
     });
     
-    return response.data;
+    const documentInfo = response.data;
+    
+    // 結果オブジェクトを作成
+    const result = {
+      documentId,
+      title: documentInfo.title || "",
+      revisionId: documentInfo.revisionId || "",
+      tabCount: tabs.length,
+      tabs: [] as any[]
+    };
+    
+    // タブが存在しない場合は空の結果を返す
+    if (tabs.length === 0) {
+      result.tabs = [{
+        tabId: "default",
+        title: "メインドキュメント",
+        level: 0,
+        text: "このドキュメントにはタブが存在しません。"
+      }];
+      return result;
+    }
+    
+    // 各タブのテキスト内容を取得
+    for (const tab of tabs) {
+      try {
+        const tabText = await getDocumentTabText(auth, documentId, tab.tabId);
+        
+        result.tabs.push({
+          tabId: tab.tabId,
+          title: tab.title,
+          level: tab.level,
+          hasChildTabs: tab.hasChildTabs,
+          isDefaultTab: tab.isDefaultTab,
+          text: tabText
+        });
+      } catch (error) {
+        console.error(`タブ "${tab.title}" (ID: ${tab.tabId}) のテキスト取得エラー:`, error);
+        
+        // エラーが発生したタブも結果に含めるが、エラーメッセージを設定
+        result.tabs.push({
+          tabId: tab.tabId,
+          title: tab.title,
+          level: tab.level,
+          hasChildTabs: tab.hasChildTabs,
+          isDefaultTab: tab.isDefaultTab,
+          text: `エラー: このタブのテキスト取得に失敗しました (${error instanceof Error ? error.message : String(error)})`
+        });
+      }
+    }
+    
+    return result;
   } catch (error) {
     console.error("Googleドキュメントの内容取得エラー:", error);
     throw error;
@@ -681,7 +736,7 @@ server.tool(
 // Googleドキュメントの内容を取得するツール
 server.tool(
   "g_drive_get_doc_content",
-  "Google Docsドキュメントの内容を取得する",
+  "Google Docsドキュメントの内容をタブ別に整理して取得する",
   {
     documentId: z.string().describe("ドキュメントのID"),
   },
