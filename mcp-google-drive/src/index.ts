@@ -1530,54 +1530,7 @@ async function getDocumentText(auth: OAuth2Client, documentId: string): Promise<
   }
 }
 
-// Googleドキュメントのテキストのみを取得するツール
-server.tool(
-  "g_drive_get_doc_text",
-  "Googleドキュメントに含まれるテキストデータのみを取得する",
-  {
-    documentId: z.string().describe("ドキュメントのID"),
-  },
-  async ({ documentId }) => {
-    try {
-      const auth = await getAuthClient();
-      if (!auth) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
-            },
-          ],
-          isError: true
-        };
-      }
 
-      const textContent = await getDocumentText(auth, documentId);
-      
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              status: "success",
-              text: textContent
-            }, null, 2)
-          }
-        ],
-      };
-    } catch (error: any) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `ドキュメントのテキスト取得に失敗しました: ${error.message || String(error)}`
-          }
-        ],
-        isError: true
-      };
-    }
-  }
-);
 
 // Googleスプレッドシートのテキストのみを抽出する関数
 async function getSpreadsheetText(auth: OAuth2Client, spreadsheetId: string): Promise<string> {
