@@ -109,12 +109,15 @@ npm run build
 13. `g_drive_replace_text_in_doc` - Googleドキュメント内のテキストを置換
 14. `g_drive_insert_image` - Googleドキュメントに画像を挿入
 15. `g_drive_get_doc_text` - Googleドキュメントに含まれるテキストデータのみを取得（要約用）
+16. `g_drive_get_doc_tab_text` - GoogleドキュメントのタブIDを指定してテキスト内容を取得。
+17. `g_drive_get_doc_tabs` - Googleドキュメントのタブ一覧を取得する
 
 ### スライド関連
 
-16. `g_drive_get_presentation_content` - Googleスライドの内容を取得
-17. `g_drive_get_slide_thumbnail` - Googleスライドの特定ページのサムネイル画像を取得
-18. `g_drive_get_slide_by_page_number` - Googleスライドの特定ページを番号指定で取得
-19. `g_drive_get_presentation_comments` - Googleスライドのコメントを取得
-20. `g_drive_get_presentation_text` - Googleスライドに含まれるテキストデータのみを取得（要約用）
+18. `g_drive_get_presentation_content` - Googleスライドの内容を取得
+19. `g_drive_get_slide_thumbnail` - Googleスライドの特定ページのサムネイル画像を取得
+20. `g_drive_get_slide_by_page_number` - Googleスライドの特定ページを番号指定で取得
+21. `g_drive_get_presentation_comments` - Googleスライドのコメントを取得
+22. `g_drive_get_presentation_text` - Googleスライドに含まれるテキストデータのみを取得（要約用）
+
 

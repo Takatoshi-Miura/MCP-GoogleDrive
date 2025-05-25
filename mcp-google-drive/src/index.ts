@@ -1754,6 +1754,352 @@ server.tool(
   }
 );
 
+// Googleドキュメントのタブ一覧を取得する関数
+async function getDocumentTabs(auth: OAuth2Client, documentId: string): Promise<any[]> {
+  try {
+    const docs = google.docs({ version: "v1", auth });
+    
+    // includeTabsContentをtrueに設定してドキュメントを取得
+    const response = await docs.documents.get({
+      documentId,
+      includeTabsContent: true
+    });
+    
+    const document = response.data;
+    
+    // タブが存在しない場合
+    if (!document.tabs || document.tabs.length === 0) {
+      return [];
+    }
+    
+    // タブ情報を再帰的に抽出する関数
+    function extractTabInfo(tabs: any[], level: number = 0): any[] {
+      const tabList: any[] = [];
+      
+      for (const tab of tabs) {
+        if (tab.tabProperties) {
+          const tabInfo = {
+            tabId: tab.tabProperties.tabId || "",
+            title: tab.tabProperties.title || "無題のタブ",
+            level: level,
+            hasChildTabs: tab.childTabs && tab.childTabs.length > 0,
+            isDefaultTab: level === 0 && tabList.length === 0 // 最初のルートレベルタブをデフォルトとして扱う
+          };
+          
+          tabList.push(tabInfo);
+          
+          // 子タブが存在する場合は再帰的に処理
+          if (tab.childTabs && tab.childTabs.length > 0) {
+            const childTabs = extractTabInfo(tab.childTabs, level + 1);
+            tabList.push(...childTabs);
+          }
+        }
+      }
+      
+      return tabList;
+    }
+    
+    // タブ情報を抽出
+    const tabList = extractTabInfo(document.tabs);
+    
+    return tabList;
+  } catch (error) {
+    console.error("ドキュメントタブ一覧取得エラー:", error);
+    throw error;
+  }
+}
+
+// Googleドキュメントのタブ指定でテキストを取得する関数
+async function getDocumentTabText(auth: OAuth2Client, documentId: string, tabId: string): Promise<string> {
+  try {
+    const docs = google.docs({ version: "v1", auth });
+    
+    // includeTabsContentをtrueに設定してドキュメントを取得
+    const response = await docs.documents.get({
+      documentId,
+      includeTabsContent: true
+    });
+    
+    const document = response.data;
+    
+    // テキスト抽出結果
+    let extractedText = "";
+    
+    // タイトルを追加
+    if (document.title) {
+      extractedText += `タイトル: ${document.title}\n\n`;
+    }
+    
+    // タブが存在しない場合
+    if (!document.tabs || document.tabs.length === 0) {
+      return extractedText + "ドキュメントにタブが存在しません。";
+    }
+    
+    // 指定されたタブIDを検索する関数
+    function findTabById(tabs: any[], targetTabId: string): any {
+      for (const tab of tabs) {
+        if (tab.tabProperties && tab.tabProperties.tabId === targetTabId) {
+          return tab;
+        }
+        // 子タブも検索
+        if (tab.childTabs && tab.childTabs.length > 0) {
+          const foundTab = findTabById(tab.childTabs, targetTabId);
+          if (foundTab) return foundTab;
+        }
+      }
+      return null;
+    }
+    
+    // 指定されたタブIDを検索
+    const targetTab = findTabById(document.tabs, tabId);
+    
+    if (!targetTab) {
+      // 利用可能なタブIDを一覧表示
+      const availableTabIds: string[] = [];
+      
+      function collectTabIds(tabs: any[]) {
+        for (const tab of tabs) {
+          if (tab.tabProperties && tab.tabProperties.tabId) {
+            const title = tab.tabProperties.title || "無題のタブ";
+            availableTabIds.push(`ID: ${tab.tabProperties.tabId} (タイトル: ${title})`);
+          }
+          if (tab.childTabs && tab.childTabs.length > 0) {
+            collectTabIds(tab.childTabs);
+          }
+        }
+      }
+      
+      collectTabIds(document.tabs);
+      
+      return extractedText + 
+        `指定されたタブID "${tabId}" が見つかりません。\n\n` +
+        `利用可能なタブID一覧:\n${availableTabIds.join('\n')}`;
+    }
+    
+    // タブ情報を追加
+    if (targetTab.tabProperties) {
+      const tabTitle = targetTab.tabProperties.title || "無題のタブ";
+      extractedText += `タブ: ${tabTitle} (ID: ${tabId})\n\n`;
+    }
+    
+    // DocumentTabオブジェクトからコンテンツを取得
+    const documentTab = targetTab.documentTab;
+    
+    if (!documentTab || !documentTab.body || !documentTab.body.content) {
+      return extractedText + "指定されたタブの内容が存在しません。";
+    }
+    
+    // タブ内の各要素からテキストを抽出
+    for (const element of documentTab.body.content) {
+      // 段落要素の場合
+      if (element.paragraph) {
+        const paragraph = element.paragraph;
+        
+        // 段落スタイルの情報を確認
+        const paragraphStyle = paragraph.paragraphStyle || {};
+        const namedStyleType = paragraphStyle.namedStyleType || "";
+        
+        // 見出しスタイルの場合は特別な表示を追加
+        if (namedStyleType.includes("HEADING")) {
+          extractedText += "\n"; // 見出し前に空行を追加
+        }
+        
+        // 段落内の各要素（テキスト実行など）からテキストを抽出
+        let paragraphText = "";
+        if (paragraph.elements) {
+          for (const textElement of paragraph.elements) {
+            if (textElement.textRun && textElement.textRun.content) {
+              paragraphText += textElement.textRun.content;
+            }
+          }
+        }
+        
+        // 段落テキストを追加
+        extractedText += paragraphText;
+        
+        // 見出しスタイルの場合は特別な表示を追加
+        if (namedStyleType.includes("HEADING")) {
+          extractedText += "\n"; // 見出し後に空行を追加
+        }
+      }
+      
+      // テーブル要素の場合
+      else if (element.table) {
+        const table = element.table;
+        extractedText += "\n"; // テーブル前に空行を追加
+        
+        // テーブルの行ごとに処理
+        if (table.tableRows) {
+          for (const row of table.tableRows) {
+            let rowText = "";
+            
+            // 行内のセルごとに処理
+            if (row.tableCells) {
+              for (const cell of row.tableCells) {
+                let cellText = "";
+                
+                // セル内のコンテンツを処理
+                if (cell.content) {
+                  for (const content of cell.content) {
+                    if (content.paragraph && content.paragraph.elements) {
+                      for (const textElement of content.paragraph.elements) {
+                        if (textElement.textRun && textElement.textRun.content) {
+                          cellText += textElement.textRun.content.trim();
+                        }
+                      }
+                    }
+                  }
+                }
+                
+                // セルテキストをパイプ区切りで追加
+                rowText += (rowText ? " | " : "") + cellText;
+              }
+            }
+            
+            // 行テキストを追加
+            if (rowText) {
+              extractedText += rowText + "\n";
+            }
+          }
+        }
+        
+        extractedText += "\n"; // テーブル後に空行を追加
+      }
+      
+      // リスト要素の場合
+      else if (element.paragraph && element.paragraph.bullet) {
+        const paragraph = element.paragraph;
+        const bullet = paragraph.bullet;
+        
+        // リストアイテムのテキストを抽出
+        let listItemText = "";
+        if (paragraph.elements) {
+          for (const textElement of paragraph.elements) {
+            if (textElement.textRun && textElement.textRun.content) {
+              listItemText += textElement.textRun.content;
+            }
+          }
+        }
+        
+        // ネストレベルに応じたインデントを追加
+        const nestingLevel = bullet.nestingLevel || 0;
+        const indent = "  ".repeat(nestingLevel);
+        
+        // 箇条書きスタイルを適用
+        extractedText += `${indent}• ${listItemText}`;
+      }
+    }
+    
+    // 余分な改行を整理
+    extractedText = extractedText.replace(/\n\n\n+/g, "\n\n");
+    
+    return extractedText;
+  } catch (error) {
+    console.error("ドキュメントタブテキスト抽出エラー:", error);
+    throw error;
+  }
+}
+
+// Googleドキュメントのタブ指定でテキストを取得するツール
+server.tool(
+  "g_drive_get_doc_tab_text",
+  "GoogleドキュメントのタブIDを指定してテキスト内容を取得する",
+  {
+    documentId: z.string().describe("ドキュメントのID"),
+    tabId: z.string().describe("取得するタブのID"),
+  },
+  async ({ documentId, tabId }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const textContent = await getDocumentTabText(auth, documentId, tabId);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "success",
+              text: textContent
+            }, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `ドキュメントタブのテキスト取得に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// Googleドキュメントのタブ一覧を取得するツール
+server.tool(
+  "g_drive_get_doc_tabs",
+  "Googleドキュメントのタブ一覧を取得する",
+  {
+    documentId: z.string().describe("ドキュメントのID"),
+  },
+  async ({ documentId }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const tabs = await getDocumentTabs(auth, documentId);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "success",
+              tabs: tabs,
+              tabCount: tabs.length
+            }, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `ドキュメントのタブ一覧取得に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
 // メイン関数
 async function main() {
   try {
