@@ -98,24 +98,25 @@ npm run build
 5. `g_drive_get_spreadsheet_sheets` - スプレッドシートのシート一覧を取得
 6. `g_drive_get_all_sheets_data` - スプレッドシートの全シートデータを一括取得
 7. `g_drive_get_spreadsheet_text` - スプレッドシートの全シートのテキストデータを取得
-8. `g_drive_get_sheet_values` - スプレッドシートから値を取得(範囲指定)
-9. `g_drive_update_sheet_values` - スプレッドシートの値を更新
-10. `g_drive_append_sheet_values` - スプレッドシートに値を追加
+8. `g_drive_get_spreadsheet_comments` - スプレッドシートの全シートのコメントを取得
+9. `g_drive_get_sheet_values` - スプレッドシートから値を取得(範囲指定)
+10. `g_drive_update_sheet_values` - スプレッドシートの値を更新
+11. `g_drive_append_sheet_values` - スプレッドシートに値を追加
 
 ### ドキュメント関連
 
-11. `g_drive_get_doc_tabs` - Googleドキュメントのタブ一覧を取得する
-12. `g_drive_get_doc_content` - Googleドキュメントの内容を全取得(タブ考慮)
-13. `g_drive_get_doc_tab_text` - Googleドキュメントの内容を取得(タブID指定)
-14. `g_drive_insert_text_to_doc` - Googleドキュメントに指定位置にテキストを挿入
-15. `g_drive_replace_text_in_doc` - Googleドキュメント内のテキストを置換
+12. `g_drive_get_doc_tabs` - Googleドキュメントのタブ一覧を取得する
+13. `g_drive_get_doc_content` - Googleドキュメントの内容を全取得(タブ考慮)
+14. `g_drive_get_doc_tab_text` - Googleドキュメントの内容を取得(タブID指定)
+15. `g_drive_insert_text_to_doc` - Googleドキュメントに指定位置にテキストを挿入
+16. `g_drive_replace_text_in_doc` - Googleドキュメント内のテキストを置換
 
 ### スライド関連
 
-16. `g_drive_get_presentation_content` - Googleスライドの内容を取得
-17. `g_drive_get_slide_thumbnail` - Googleスライドの特定ページのサムネイル画像を取得
-18. `g_drive_get_slide_by_page_number` - Googleスライドの特定ページを番号指定で取得
-19. `g_drive_get_presentation_comments` - Googleスライドのコメントを取得
-20. `g_drive_get_presentation_text` - Googleスライドに含まれるテキストデータのみを取得（要約用）
+17. `g_drive_get_presentation_content` - Googleスライドの内容を取得
+18. `g_drive_get_slide_thumbnail` - Googleスライドの特定ページのサムネイル画像を取得
+19. `g_drive_get_slide_by_page_number` - Googleスライドの特定ページを番号指定で取得
+20. `g_drive_get_presentation_comments` - Googleスライドのコメントを取得
+21. `g_drive_get_presentation_text` - Googleスライドに含まれるテキストデータのみを取得（要約用）
 
 

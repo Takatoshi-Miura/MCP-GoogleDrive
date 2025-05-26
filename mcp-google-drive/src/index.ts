@@ -8,6 +8,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 import { authorize } from "./auth.js";
+import { getSpreadsheetComments } from "./tools/spreadsheet-comments.js";
 
 // ESM用にファイルパスを取得
 const __filename = fileURLToPath(import.meta.url);
@@ -1990,6 +1991,52 @@ server.tool(
           {
             type: "text",
             text: `ドキュメントのタブ一覧取得に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// Googleスプレッドシートのコメントを取得するツール
+server.tool(
+  "g_drive_get_spreadsheet_comments",
+  "Googleスプレッドシートの全シートのコメントを取得する",
+  {
+    spreadsheetId: z.string().describe("スプレッドシートのID"),
+  },
+  async ({ spreadsheetId }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const result = await getSpreadsheetComments(auth, spreadsheetId);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2)
+          }
+        ],
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `スプレッドシートのコメント取得に失敗しました: ${error.message || String(error)}`
           }
         ],
         isError: true
