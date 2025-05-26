@@ -9,6 +9,7 @@ import { fileURLToPath } from "url";
 import { dirname } from "path";
 import { authorize } from "./auth.js";
 import { getSpreadsheetComments } from "./tools/spreadsheet-comments.js";
+import { getDocumentComments } from "./tools/document-comments.js";
 
 // ESM用にファイルパスを取得
 const __filename = fileURLToPath(import.meta.url);
@@ -1991,6 +1992,57 @@ server.tool(
           {
             type: "text",
             text: `ドキュメントのタブ一覧取得に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// Googleドキュメントのコメントを取得するツール
+server.tool(
+  "g_drive_get_doc_comments",
+  "Googleドキュメントのコメントを取得する",
+  {
+    documentId: z.string().describe("ドキュメントのID"),
+  },
+  async ({ documentId }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const result = await getDocumentComments(auth, documentId);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2)
+          }
+        ],
+        isError: result.status === 'error'
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "error",
+              error: error.message || "Failed to get document comments",
+              documentId
+            }, null, 2)
           }
         ],
         isError: true
