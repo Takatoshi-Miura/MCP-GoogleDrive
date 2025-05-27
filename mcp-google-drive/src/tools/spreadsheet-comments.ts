@@ -6,76 +6,65 @@ export async function getSpreadsheetComments(
   spreadsheetId: string
 ) {
   try {
-    const sheets = google.sheets({ version: 'v4', auth });
     const drive = google.drive({ version: 'v3', auth });
 
-    // スプレッドシートの基本情報を取得
-    const spreadsheetResponse = await sheets.spreadsheets.get({
-      spreadsheetId,
-    });
-
-    const sheetList = spreadsheetResponse.data.sheets || [];
-    const comments = [];
-
-    // Drive APIを使用してファイル全体のコメントを取得
+    // シンプルにDrive APIでコメントを取得
+    console.log(`=== Debug: Fetching comments for ${spreadsheetId} ===`);
+    
     const commentsResponse = await drive.comments.list({
       fileId: spreadsheetId,
-      fields: 'comments(id,content,author,createdTime,modifiedTime,resolved,quotedFileContent,replies)',
+      fields: 'comments(id,content,author,createdTime,modifiedTime,resolved,quotedFileContent,replies,anchor)',
     });
 
+    console.log('=== Raw API Response ===');
+    console.log('Response status:', commentsResponse.status);
+    console.log('Response data:', JSON.stringify(commentsResponse.data, null, 2));
+
     const allComments = commentsResponse.data.comments || [];
+    console.log(`=== Found ${allComments.length} comments ===`);
 
-    // 各シートごとにコメントを整理
-    for (const sheet of sheetList) {
-      const sheetName = sheet.properties?.title || '';
-      const sheetId = sheet.properties?.sheetId || 0;
-
-      // このシートに関連するコメントをフィルタリング
-      const sheetComments = allComments.filter(comment => {
-        const quotedContent = comment.quotedFileContent;
-        if (!quotedContent) return false;
-        
-        // スプレッドシートのコメントかチェック
-        if (quotedContent.mimeType !== 'application/vnd.google-apps.spreadsheet') {
-          return false;
-        }
-
-        // シート名がコメントの範囲に含まれているかチェック
-        const range = quotedContent.value || '';
-        return range.includes(sheetName) || range.includes(`gid=${sheetId}`);
-      }).map(comment => ({
-        commentId: comment.id,
-        range: comment.quotedFileContent?.value || '',
-        author: comment.author?.displayName || comment.author?.emailAddress || '',
-        content: comment.content || '',
-        createdTime: comment.createdTime,
-        modifiedTime: comment.modifiedTime,
-        resolved: comment.resolved || false,
-        replies: comment.replies?.map(reply => ({
-          author: reply.author?.displayName || reply.author?.emailAddress || '',
-          content: reply.content || '',
-          createdTime: reply.createdTime,
-        })) || [],
-      }));
-
-      comments.push({
-        sheetName,
-        sheetId,
-        comments: sheetComments,
-      });
-    }
+    // 全コメントを単純にリストアップ
+    const simpleComments = allComments.map((comment, index) => ({
+      index: index + 1,
+      commentId: comment.id || 'No ID',
+      content: comment.content || 'No content',
+      author: comment.author?.displayName || comment.author?.emailAddress || 'Unknown author',
+      createdTime: comment.createdTime || 'No created time',
+      modifiedTime: comment.modifiedTime || 'No modified time',
+      resolved: comment.resolved || false,
+      anchor: comment.anchor || 'No anchor',
+      quotedFileContent: comment.quotedFileContent?.value || 'No quoted content',
+      replies: comment.replies?.map(reply => ({
+        author: reply.author?.displayName || reply.author?.emailAddress || 'Unknown',
+        content: reply.content || 'No content',
+        createdTime: reply.createdTime,
+      })) || [],
+      rawData: comment // 全データを含める
+    }));
 
     return {
       status: 'success',
       spreadsheetId,
       totalComments: allComments.length,
-      comments,
+      comments: [{
+        sheetName: 'すべてのコメント（テスト）',
+        sheetId: -1,
+        comments: simpleComments,
+      }],
+      debug: {
+        message: 'Simple test mode - showing all comments as-is',
+        apiResponse: commentsResponse.data
+      }
     };
   } catch (error) {
-    console.error('Error getting spreadsheet comments:', error);
+    console.error('=== Error in getSpreadsheetComments ===');
+    console.error('Error details:', error);
+    
     return {
       status: 'error',
       error: error instanceof Error ? error.message : 'Unknown error',
+      details: error instanceof Error ? error.stack : 'Unknown error details',
+      spreadsheetId
     };
   }
 } 
