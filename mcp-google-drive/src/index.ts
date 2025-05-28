@@ -10,6 +10,7 @@ import { dirname } from "path";
 import { authorize } from "./auth.js";
 import { getSpreadsheetComments } from "./tools/spreadsheet-comments.js";
 import { getDocumentComments } from "./tools/document-comments.js";
+import { extractPdfText, listPdfFiles } from "./tools/pdf-text-extractor.js";
 
 // ESM用にファイルパスを取得
 const __filename = fileURLToPath(import.meta.url);
@@ -1532,8 +1533,6 @@ async function getDocumentText(auth: OAuth2Client, documentId: string): Promise<
   }
 }
 
-
-
 // Googleスプレッドシートのテキストのみを抽出する関数
 async function getSpreadsheetText(auth: OAuth2Client, spreadsheetId: string): Promise<string> {
   try {
@@ -2089,6 +2088,107 @@ server.tool(
           {
             type: "text",
             text: `スプレッドシートのコメント取得に失敗しました: ${error.message || String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// GoogleドライブのPDFファイル一覧を取得するツール
+server.tool(
+  "g_drive_list_pdf_files",
+  "GoogleドライブのPDFファイル一覧を取得する",
+  {
+    maxResults: z.number().optional().describe("取得する最大ファイル数（デフォルト: 50、最大: 100）"),
+  },
+  async ({ maxResults = 50 }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const result = await listPdfFiles(auth, maxResults);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2)
+          }
+        ],
+        isError: result.status === 'error'
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "error",
+              error: error.message || "PDFファイル一覧の取得に失敗しました"
+            }, null, 2)
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// GoogleドライブのPDFファイルからテキストを抽出するツール
+server.tool(
+  "g_drive_extract_pdf_text",
+  "GoogleドライブのPDFファイルからテキスト情報を抽出する",
+  {
+    fileId: z.string().describe("PDFファイルのID"),
+  },
+  async ({ fileId }) => {
+    try {
+      const auth = await getAuthClient();
+      if (!auth) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+            },
+          ],
+          isError: true
+        };
+      }
+
+      const result = await extractPdfText(auth, fileId);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2)
+          }
+        ],
+        isError: result.status === 'error'
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "error",
+              fileId,
+              error: error.message || "PDFテキストの抽出に失敗しました"
+            }, null, 2)
           }
         ],
         isError: true
