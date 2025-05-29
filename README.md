@@ -115,12 +115,10 @@ npm run build
 
 ### スライド関連
 
-19. `g_drive_get_presentation_content` - Googleスライドの内容を取得
-20. `g_drive_get_slide_thumbnail` - Googleスライドの特定ページのサムネイル画像を取得
-21. `g_drive_get_slide_by_page_number` - Googleスライドの特定ページを番号指定で取得
-22. `g_drive_get_presentation_comments` - Googleスライドのコメントを取得
-23. `g_drive_get_presentation_text` - Googleスライドに含まれるテキストデータのみを取得
+19. `g_drive_get_presentation_text` - Googleスライドに含まれるテキストデータのみを取得
+20. `g_drive_get_slide_by_page_number` - Googleスライドの特定ページを番号指定で取得
+21. `g_drive_get_presentation_comments` - Googleスライドのコメントを取得
 
 ### PDF関連
 
-24. `g_drive_extract_pdf_text` - GoogleドライブのPDFファイルからテキスト情報を抽出
+22. `g_drive_extract_pdf_text` - GoogleドライブのPDFファイルからテキスト情報を抽出

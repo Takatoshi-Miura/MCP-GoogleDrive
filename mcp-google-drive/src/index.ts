@@ -294,39 +294,6 @@ async function getPresentationContent(auth: OAuth2Client, presentationId: string
   }
 }
 
-// Googleスライドの特定ページを画像として取得する関数
-async function getSlideImageThumbnail(auth: OAuth2Client, presentationId: string, pageObjectId?: string): Promise<any> {
-  try {
-    // まずプレゼンテーションの内容を取得してページIDを確認
-    const presentation = await getPresentationContent(auth, presentationId);
-    
-    // ページIDが指定されていない場合は最初のページを使用
-    let targetPageId = pageObjectId;
-    if (!targetPageId && presentation.slides && presentation.slides.length > 0) {
-      targetPageId = presentation.slides[0].objectId;
-    }
-    
-    if (!targetPageId) {
-      throw new Error("スライドページが見つかりません");
-    }
-    
-    // Driveのサムネイル取得APIを使用して画像を取得
-    const drive = google.drive({ version: "v3", auth });
-    const response = await drive.files.get({
-      fileId: presentationId,
-      fields: "thumbnailLink",
-    });
-    
-    return {
-      thumbnailLink: response.data.thumbnailLink,
-      presentationId,
-      pageObjectId: targetPageId
-    };
-  } catch (error) {
-    console.error("スライド画像取得エラー:", error);
-    throw error;
-  }
-}
 
 // Googleスライドの特定ページを取得する関数
 async function getSlideByPageNumber(auth: OAuth2Client, presentationId: string, pageNumber: number): Promise<any> {
@@ -1038,104 +1005,7 @@ server.tool(
   }
 );
 
-// Googleスライドの内容を取得するツール
-server.tool(
-  "g_drive_get_presentation_content",
-  "Googleスライドの内容を取得する",
-  {
-    presentationId: z.string().describe("スライドのID"),
-  },
-  async ({ presentationId }) => {
-    try {
-      const auth = await getAuthClient();
-      if (!auth) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
-            },
-          ],
-          isError: true
-        };
-      }
 
-      const presentationContent = await getPresentationContent(auth, presentationId);
-      
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              status: "success",
-              presentation: presentationContent
-            }, null, 2)
-          }
-        ],
-      };
-    } catch (error: any) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `スライドの内容取得に失敗しました: ${error.message || String(error)}`
-          }
-        ],
-        isError: true
-      };
-    }
-  }
-);
-
-// Googleスライドの特定ページを画像として取得するツール
-server.tool(
-  "g_drive_get_slide_thumbnail",
-  "Googleスライドの特定ページのサムネイル画像を取得する",
-  {
-    presentationId: z.string().describe("スライドのID"),
-    pageObjectId: z.string().optional().describe("取得するスライドページのID（指定しない場合は最初のページ）"),
-  },
-  async ({ presentationId, pageObjectId }) => {
-    try {
-      const auth = await getAuthClient();
-      if (!auth) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
-            },
-          ],
-          isError: true
-        };
-      }
-
-      const thumbnailInfo = await getSlideImageThumbnail(auth, presentationId, pageObjectId);
-      
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              status: "success",
-              thumbnail: thumbnailInfo
-            }, null, 2)
-          }
-        ],
-      };
-    } catch (error: any) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `スライドのサムネイル取得に失敗しました: ${error.message || String(error)}`
-          }
-        ],
-        isError: true
-      };
-    }
-  }
-);
 
 // Googleスライドの特定ページを番号指定で取得するツール
 server.tool(
