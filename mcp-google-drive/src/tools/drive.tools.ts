@@ -114,4 +114,123 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
       }
     }
   );
+
+  // フォルダ一覧取得ツール
+  server.tool(
+    "g_drive_list_folders",
+    "Google Drive内のフォルダ一覧を取得する",
+    {},
+    async () => {
+      try {
+        const auth = await getAuthClient();
+        const authError = checkAuthAndReturnError(auth);
+        if (authError) {
+          return authError;
+        }
+
+        const driveService = new DriveService(auth);
+        const folders = await driveService.listFolders();
+
+        // フォルダ名をマークダウンリンク形式に変換
+        const foldersWithMarkdownLinks = folders.map(folder => ({
+          ...folder,
+          name: folder.webViewLink ? `[${folder.name}](${folder.webViewLink})` : folder.name
+        }));
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                status: "success",
+                totalCount: foldersWithMarkdownLinks.length,
+                folders: foldersWithMarkdownLinks
+              }, null, 2)
+            }
+          ],
+        };
+      } catch (error: any) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `フォルダ一覧取得に失敗しました: ${error.message || String(error)}`
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+  );
+
+  // 新しいファイル作成ツール
+  server.tool(
+    "g_drive_create_file",
+    "指定されたフォルダに新しいGoogleドキュメント、スプレッドシート、またはスライドを作成する",
+    {
+      fileName: z.string().describe("作成するファイルの名前"),
+      fileType: z.enum(['docs', 'sheets', 'presentations']).describe(
+        "作成するファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート), 'presentations'(スライド)"
+      ),
+      folderId: z.string().optional().describe("作成先フォルダのID（省略した場合はマイドライブのルートに作成）")
+    },
+    async ({ fileName, fileType, folderId }) => {
+      try {
+        const auth = await getAuthClient();
+        const authError = checkAuthAndReturnError(auth);
+        if (authError) {
+          return authError;
+        }
+
+        const driveService = new DriveService(auth);
+
+        // フォルダIDが指定されている場合は存在確認
+        if (folderId) {
+          const isValidFolder = await driveService.validateFolderId(folderId);
+          if (!isValidFolder) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `指定されたフォルダID "${folderId}" は存在しないか、フォルダではありません。g_drive_list_foldersツールを使用してフォルダ一覧を確認してください。`
+                }
+              ],
+              isError: true
+            };
+          }
+        }
+
+        // ファイルを作成
+        const createdFile = await driveService.createFile(fileName, fileType, folderId);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                status: "success",
+                message: "ファイルが正常に作成されました",
+                file: {
+                  id: createdFile.id,
+                  name: `[${createdFile.name}](${createdFile.webViewLink})`,
+                  type: createdFile.type,
+                  link: createdFile.webViewLink
+                }
+              }, null, 2)
+            }
+          ],
+        };
+      } catch (error: any) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `ファイル作成に失敗しました: ${error.message || String(error)}`
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+  );
 } 

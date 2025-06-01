@@ -359,4 +359,106 @@ export class DriveService {
 
     return { files, responseKey, useSpecialHandling };
   }
+
+  // 指定されたフォルダに新しいファイルを作成する関数
+  async createFile(fileName: string, fileType: 'docs' | 'sheets' | 'presentations', folderId?: string): Promise<{
+    id: string;
+    name: string;
+    webViewLink: string;
+    type: string;
+  }> {
+    const drive = google.drive({ version: "v3", auth: this.auth });
+    
+    try {
+      // ファイルタイプに応じたMIMEタイプを設定
+      let mimeType: string;
+      let type: string;
+      
+      switch (fileType) {
+        case 'docs':
+          mimeType = 'application/vnd.google-apps.document';
+          type = 'Google Document';
+          break;
+        case 'sheets':
+          mimeType = 'application/vnd.google-apps.spreadsheet';
+          type = 'Google Spreadsheet';
+          break;
+        case 'presentations':
+          mimeType = 'application/vnd.google-apps.presentation';
+          type = 'Google Slides';
+          break;
+        default:
+          throw new Error(`サポートされていないファイルタイプです: ${fileType}`);
+      }
+
+      // ファイル作成のメタデータ
+      const fileMetadata: any = {
+        name: fileName,
+        mimeType: mimeType,
+      };
+
+      // フォルダが指定されている場合は親フォルダを設定
+      if (folderId) {
+        fileMetadata.parents = [folderId];
+      }
+
+      // ファイルを作成
+      const response = await drive.files.create({
+        requestBody: fileMetadata,
+        fields: 'id, name, webViewLink'
+      });
+
+      if (!response.data.id || !response.data.name || !response.data.webViewLink) {
+        throw new Error('ファイル作成に失敗しました: 必要な情報が取得できませんでした');
+      }
+
+      return {
+        id: response.data.id,
+        name: response.data.name,
+        webViewLink: response.data.webViewLink,
+        type: type
+      };
+    } catch (error) {
+      console.error("ファイル作成エラー:", error);
+      throw error;
+    }
+  }
+
+  // フォルダ一覧を取得する関数
+  async listFolders(): Promise<FileInfo[]> {
+    const drive = google.drive({ version: "v3", auth: this.auth });
+    
+    try {
+      const response = await drive.files.list({
+        q: "mimeType='application/vnd.google-apps.folder' and trashed=false",
+        pageSize: 50,
+        fields: "files(id, name, createdTime, modifiedTime, webViewLink)",
+        orderBy: "name"
+      });
+      
+      return response.data.files || [];
+    } catch (error) {
+      console.error("フォルダ一覧取得エラー:", error);
+      throw error;
+    }
+  }
+
+  // フォルダIDの存在確認
+  async validateFolderId(folderId: string): Promise<boolean> {
+    const drive = google.drive({ version: "v3", auth: this.auth });
+    
+    try {
+      const response = await drive.files.get({
+        fileId: folderId,
+        fields: "id, mimeType, trashed"
+      });
+      
+      // フォルダかどうかとゴミ箱に入っていないかを確認
+      return response.data.mimeType === 'application/vnd.google-apps.folder' && 
+             !response.data.trashed;
+    } catch (error) {
+      console.error("フォルダID検証エラー:", error);
+      return false;
+    }
+  }
 } 
