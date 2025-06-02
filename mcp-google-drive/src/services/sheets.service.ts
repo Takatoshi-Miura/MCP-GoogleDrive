@@ -87,28 +87,6 @@ export class SheetsService {
     }
   }
 
-  // スプレッドシートの値を更新する関数
-  async updateSheetValues(
-    spreadsheetId: string,
-    range: string,
-    values: any[][]
-  ): Promise<void> {
-    const sheets = google.sheets({ version: "v4", auth: this.auth });
-    try {
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range,
-        valueInputOption: "USER_ENTERED",
-        requestBody: {
-          values,
-        },
-      });
-    } catch (error) {
-      console.error("スプレッドシートの値更新エラー:", error);
-      throw error;
-    }
-  }
-
   // スプレッドシートに値を追加する関数
   async appendSheetValues(
     spreadsheetId: string,
@@ -129,6 +107,92 @@ export class SheetsService {
       console.error("スプレッドシートへの値追加エラー:", error);
       throw error;
     }
+  }
+
+  // スプレッドシートの指定位置に値を挿入する関数
+  async insertSheetValuesAtPosition(
+    spreadsheetId: string,
+    range: string,
+    values: any[][],
+    insertPosition: number
+  ): Promise<void> {
+    const sheets = google.sheets({ version: "v4", auth: this.auth });
+    try {
+      // 範囲からシート名を抽出
+      const sheetName = range.split('!')[0];
+      
+      // まずシート情報を取得してsheetIdを得る
+      const spreadsheetInfo = await sheets.spreadsheets.get({
+        spreadsheetId,
+        fields: "sheets.properties"
+      });
+      
+      const sheet = spreadsheetInfo.data.sheets?.find(s => s.properties?.title === sheetName);
+      if (!sheet || !sheet.properties) {
+        throw new Error(`シート "${sheetName}" が見つかりません`);
+      }
+      
+      const sheetId = sheet.properties.sheetId;
+      const rowsToInsert = values.length;
+      
+      // batchUpdateで行を挿入してから値を設定
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            // 1. 指定位置に行を挿入
+            {
+              insertDimension: {
+                range: {
+                  sheetId: sheetId,
+                  dimension: "ROWS",
+                  startIndex: insertPosition - 1, // 0ベースに変換
+                  endIndex: insertPosition - 1 + rowsToInsert
+                },
+                inheritFromBefore: false
+              }
+            },
+            // 2. 挿入した行に値を設定
+            {
+              updateCells: {
+                range: {
+                  sheetId: sheetId,
+                  startRowIndex: insertPosition - 1,
+                  endRowIndex: insertPosition - 1 + rowsToInsert,
+                  startColumnIndex: this.getColumnIndex(range),
+                  endColumnIndex: this.getColumnIndex(range) + (values[0]?.length || 0)
+                },
+                rows: values.map(row => ({
+                  values: row.map(cell => ({
+                    userEnteredValue: {
+                      stringValue: String(cell)
+                    }
+                  }))
+                })),
+                fields: "userEnteredValue"
+              }
+            }
+          ]
+        }
+      });
+    } catch (error) {
+      console.error("スプレッドシートへの値挿入エラー:", error);
+      throw error;
+    }
+  }
+
+  // 範囲文字列から列のインデックスを取得するヘルパー関数
+  private getColumnIndex(range: string): number {
+    const cellPart = range.split('!')[1] || range;
+    const match = cellPart.match(/^([A-Z]+)/);
+    if (!match) return 0;
+    
+    const columnLetters = match[1];
+    let index = 0;
+    for (let i = 0; i < columnLetters.length; i++) {
+      index = index * 26 + (columnLetters.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
+    }
+    return index - 1; // 0ベースに変換
   }
 
   // スプレッドシートのシート一覧を取得する関数

@@ -5,10 +5,6 @@ import { fileURLToPath } from "url";
 import { dirname } from "path";
 import { authorize } from "./auth.js";
 import { registerDriveTools } from "./tools/drive.tools.js";
-import { registerSheetsTools } from "./tools/sheets.tools.js";
-import { registerDocsTools } from "./tools/docs.tools.js";
-import { registerSlidesTools } from "./tools/slides.tools.js";
-import { registerPdfTools } from "./tools/pdf.tools.js";
 
 // ESM用にファイルパスを取得
 const __filename = fileURLToPath(import.meta.url);
@@ -43,10 +39,6 @@ async function getAuthClient() {
 
 // ツールの登録
 registerDriveTools(server, getAuthClient);
-registerSheetsTools(server, getAuthClient);
-registerDocsTools(server, getAuthClient);
-registerSlidesTools(server, getAuthClient);
-registerPdfTools(server, getAuthClient);
 
 // メイン関数
 async function main() {

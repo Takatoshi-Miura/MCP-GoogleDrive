@@ -70,7 +70,7 @@ export class DocsService {
   }
 
   // Googleドキュメントの内容を取得する関数（タブ別にテキストを統合）
-  async getDocContent(documentId: string): Promise<DocumentInfo> {
+  async getDocText(documentId: string): Promise<DocumentInfo> {
     try {
       // まずドキュメントのタブ一覧を取得
       const tabs = await this.getDocumentTabs(documentId);
@@ -167,39 +167,6 @@ export class DocsService {
       return response.data;
     } catch (error) {
       console.error("Googleドキュメントへのテキスト挿入エラー:", error);
-      throw error;
-    }
-  }
-
-  // Googleドキュメントのテキストを置換する関数
-  async replaceTextInDoc(
-    documentId: string,
-    text: string,
-    replaceText: string,
-    matchCase: boolean = false
-  ): Promise<any> {
-    const docs = google.docs({ version: "v1", auth: this.auth });
-    try {
-      const response = await docs.documents.batchUpdate({
-        documentId,
-        requestBody: {
-          requests: [
-            {
-              replaceAllText: {
-                containsText: {
-                  text,
-                  matchCase,
-                },
-                replaceText,
-              },
-            },
-          ],
-        },
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error("Googleドキュメントのテキスト置換エラー:", error);
       throw error;
     }
   }

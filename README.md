@@ -25,11 +25,7 @@ mcp-google-drive/
 │   │   ├── slides.service.ts    # Google Slides操作
 │   │   └── pdf.service.ts       # PDF操作
 │   ├── tools/               # MCPツール定義
-│   │   ├── drive.tools.ts       # Drive関連ツール
-│   │   ├── sheets.tools.ts      # Sheets関連ツール
-│   │   ├── docs.tools.ts        # Docs関連ツール
-│   │   ├── slides.tools.ts      # Slides関連ツール
-│   │   └── pdf.tools.ts         # PDF関連ツール
+│   │   └── drive.tools.ts       # Drive関連ツール
 │   ├── types/               # 型定義
 │   │   └── index.ts            # 共通型定義
 │   ├── utils/               # ユーティリティ関数
@@ -121,39 +117,17 @@ npm run build
 
 このMCPサーバーでは、以下のツールが利用可能です：
 
-### Google Drive関連
+### ファイル管理・検索
+- `g_drive_list_files_by_type` - 指定したタイプのファイル一覧を取得
+- `g_drive_search_files_with_analysis` - ファイルを検索し、内容を分析して関連度順に並び替え
 
-1. `g_drive_list_files_by_type` - Googleドライブファイル一覧を取得(種別：'all', 'sheets', 'docs', 'presentations', 'pdf')
-2. `g_drive_search_files_with_analysis` - Google Drive内のファイルを検索し、内容を分析して関連度順に並び替え
-3. `g_drive_list_folders` - Google Drive内のフォルダ一覧を取得
-4. `g_drive_create_file` - 指定されたフォルダに新しいGoogleドキュメント、スプレッドシート、またはスライドを作成
+### ファイル閲覧
+- `g_drive_get_file_structure` - ファイルの構造を取得（タブ一覧、シート一覧）
+- `g_drive_read_file` - ファイルの全内容を読み取り（全タブ、全シート、全ページ）
+- `g_drive_read_file_part` - ファイルを部分的に読み取り（1タブ、1シート、1ページ単位）
+- `g_drive_get_comments` - ファイルのコメントを全取得
 
-### スプレッドシート関連
+### ファイル編集
+- `g_drive_insert_value` - ドキュメントやスプレッドシートに値を挿入（上書きではなく追加）
 
-5. `g_drive_get_spreadsheet_sheets` - スプレッドシートのシート一覧を取得
-6. `g_drive_get_all_sheets_data` - スプレッドシートの全シートデータを一括取得
-7. `g_drive_get_spreadsheet_text` - スプレッドシートの全シートのテキストデータを取得
-8. `g_drive_get_spreadsheet_comments` - スプレッドシートの全シートのコメントを取得
-9. `g_drive_get_sheet_values` - スプレッドシートから値を取得(範囲指定)
-10. `g_drive_update_sheet_values` - スプレッドシートの値を更新
-11. `g_drive_append_sheet_values` - スプレッドシートに値を追加
-
-### ドキュメント関連
-
-12. `g_drive_get_doc_tabs` - Googleドキュメントのタブ一覧を取得する
-13. `g_drive_get_doc_content` - Googleドキュメントの内容を全取得(タブ考慮)
-14. `g_drive_get_doc_tab_text` - Googleドキュメントの内容を取得(タブID指定)
-15. `g_drive_get_doc_comments` - Googleドキュメントのコメントを取得する
-16. `g_drive_insert_text_to_doc` - Googleドキュメントに指定位置にテキストを挿入
-17. `g_drive_replace_text_in_doc` - Googleドキュメント内のテキストを置換
-
-### スライド関連
-
-18. `g_drive_get_presentation_text` - Googleスライドに含まれるテキストデータのみを取得
-19. `g_drive_get_slide_by_page_number` - Googleスライドの特定ページを番号指定で取得
-20. `g_drive_get_presentation_comments` - Googleスライドのコメントを取得
-
-### PDF関連
-
-21. `g_drive_extract_pdf_text` - GoogleドライブのPDFファイルからテキスト情報を抽出
-
+**対応ファイル形式**: Google ドキュメント、Google スプレッドシート、Google スライド、PDF

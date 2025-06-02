@@ -2,8 +2,16 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { OAuth2Client } from "google-auth-library";
 import { DriveService } from "../services/drive.service.js";
+import { DocsService } from "../services/docs.service.js";
+import { SheetsService } from "../services/sheets.service.js";
 import { FileType } from "../types/index.js";
-import { checkAuthAndReturnError } from "./common.js";
+import { 
+  checkAuthAndReturnError, 
+  createSuccessResponse, 
+  createErrorResponse, 
+  createMissingParametersError,
+  createUnsupportedFileTypeError 
+} from "./common.js";
 
 export function registerDriveTools(server: McpServer, getAuthClient: () => Promise<OAuth2Client | null>) {
   // Googleドライブファイル一覧取得ツール
@@ -21,9 +29,7 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
       try {
         const auth = await getAuthClient();
         const authError = checkAuthAndReturnError(auth);
-        if (authError) {
-          return authError;
-        }
+        if (authError) return authError;
 
         const driveService = new DriveService(auth);
         const { files, responseKey } = await driveService.listFilesByType(fileType as FileType, maxResults, customQuery);
@@ -34,29 +40,14 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
           name: file.webViewLink ? `[${file.name}](${file.webViewLink})` : file.name
         }));
 
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                status: "success",
-                fileType: fileType,
-                totalCount: filesWithMarkdownLinks.length,
-                [responseKey]: filesWithMarkdownLinks
-              }, null, 2)
-            }
-          ],
-        };
+        return createSuccessResponse({
+          status: "success",
+          fileType: fileType,
+          totalCount: filesWithMarkdownLinks.length,
+          [responseKey]: filesWithMarkdownLinks
+        });
       } catch (error: any) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `ファイル一覧取得に失敗しました: ${error.message || String(error)}`
-            }
-          ],
-          isError: true
-        };
+        return createErrorResponse("ファイル一覧取得に失敗しました", error);
       }
     }
   );
@@ -73,163 +64,242 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
       try {
         const auth = await getAuthClient();
         const authError = checkAuthAndReturnError(auth);
-        if (authError) {
-          return authError;
-        }
+        if (authError) return authError;
 
         const driveService = new DriveService(auth);
         const analysisResult = await driveService.searchFilesWithContentAnalysis(query, maxResults);
 
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                status: "success",
-                query: analysisResult.query,
-                totalCount: analysisResult.totalCount,
-                results: analysisResult.results.map(file => ({
-                  id: file.id,
-                  name: `[${file.name}](${file.link})`,
-                  link: file.link,
-                  type: file.type,
-                  modifiedTime: file.modifiedTime,
-                  relevanceScore: file.relevanceScore,
-                  summary: file.summary
-                }))
-              }, null, 2)
-            }
-          ],
-        };
+        return createSuccessResponse({
+          status: "success",
+          query: analysisResult.query,
+          totalCount: analysisResult.totalCount,
+          results: analysisResult.results.map(file => ({
+            id: file.id,
+            name: `[${file.name}](${file.link})`,
+            link: file.link,
+            type: file.type,
+            modifiedTime: file.modifiedTime,
+            relevanceScore: file.relevanceScore,
+            summary: file.summary
+          }))
+        });
       } catch (error: any) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `内容分析付きファイル検索に失敗しました: ${error.message || String(error)}`
-            }
-          ],
-          isError: true
-        };
+        return createErrorResponse("内容分析付きファイル検索に失敗しました", error);
       }
     }
   );
 
-  // フォルダ一覧取得ツール
+  // 統合的なファイル内容読み取りツール
   server.tool(
-    "g_drive_list_folders",
-    "Google Drive内のフォルダ一覧を取得する",
-    {},
-    async () => {
-      try {
-        const auth = await getAuthClient();
-        const authError = checkAuthAndReturnError(auth);
-        if (authError) {
-          return authError;
-        }
-
-        const driveService = new DriveService(auth);
-        const folders = await driveService.listFolders();
-
-        // フォルダ名をマークダウンリンク形式に変換
-        const foldersWithMarkdownLinks = folders.map(folder => ({
-          ...folder,
-          name: folder.webViewLink ? `[${folder.name}](${folder.webViewLink})` : folder.name
-        }));
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                status: "success",
-                totalCount: foldersWithMarkdownLinks.length,
-                folders: foldersWithMarkdownLinks
-              }, null, 2)
-            }
-          ],
-        };
-      } catch (error: any) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `フォルダ一覧取得に失敗しました: ${error.message || String(error)}`
-            }
-          ],
-          isError: true
-        };
-      }
-    }
-  );
-
-  // 新しいファイル作成ツール
-  server.tool(
-    "g_drive_create_file",
-    "指定されたフォルダに新しいGoogleドキュメント、スプレッドシート、またはスライドを作成する",
+    "g_drive_read_file",
+    "GoogleDriveのファイル内容を読み取る（ドキュメント、スプレッドシート、スライド、PDF対応）",
     {
-      fileName: z.string().describe("作成するファイルの名前"),
-      fileType: z.enum(['docs', 'sheets', 'presentations']).describe(
-        "作成するファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート), 'presentations'(スライド)"
-      ),
-      folderId: z.string().optional().describe("作成先フォルダのID（省略した場合はマイドライブのルートに作成）")
+      fileId: z.string().describe("読み取るファイルのID"),
+      fileType: z.enum(['docs', 'sheets', 'presentations', 'pdf']).describe(
+        "ファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート), 'presentations'(スライド), 'pdf'(PDFファイル)"
+      )
     },
-    async ({ fileName, fileType, folderId }) => {
+    async ({ fileId, fileType }) => {
       try {
         const auth = await getAuthClient();
         const authError = checkAuthAndReturnError(auth);
-        if (authError) {
-          return authError;
-        }
+        if (authError) return authError;
 
         const driveService = new DriveService(auth);
+        const result = await driveService.readFileContent(fileId, fileType as 'docs' | 'sheets' | 'presentations' | 'pdf');
 
-        // フォルダIDが指定されている場合は存在確認
-        if (folderId) {
-          const isValidFolder = await driveService.validateFolderId(folderId);
-          if (!isValidFolder) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `指定されたフォルダID "${folderId}" は存在しないか、フォルダではありません。g_drive_list_foldersツールを使用してフォルダ一覧を確認してください。`
-                }
-              ],
-              isError: true
-            };
+        return createSuccessResponse(result);
+      } catch (error: any) {
+        return createErrorResponse("ファイル内容の読み取りに失敗しました", error);
+      }
+    }
+  );
+
+  // 統合的なファイルコメント取得ツール
+  server.tool(
+    "g_drive_get_comments",
+    "GoogleDriveのファイルコメントを取得する（ドキュメント、スプレッドシート、スライド対応）",
+    {
+      fileId: z.string().describe("コメントを取得するファイルのID"),
+      fileType: z.enum(['docs', 'sheets', 'presentations']).describe(
+        "ファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート), 'presentations'(スライド)"
+      )
+    },
+    async ({ fileId, fileType }) => {
+      try {
+        const auth = await getAuthClient();
+        const authError = checkAuthAndReturnError(auth);
+        if (authError) return authError;
+
+        const driveService = new DriveService(auth);
+        const result = await driveService.getFileComments(fileId, fileType as 'docs' | 'sheets' | 'presentations');
+
+        return createSuccessResponse(result);
+      } catch (error: any) {
+        return createErrorResponse("ファイルコメントの取得に失敗しました", error);
+      }
+    }
+  );
+
+  // ファイル詳細読み取りツール（ページ単位）
+  server.tool(
+    "g_drive_read_file_part",
+    "ファイルを1ページ単位で詳細に読み取る（ドキュメント、スプレッドシート、スライド対応）",
+    {
+      fileId: z.string().describe("読み取るファイルのID"),
+      fileType: z.enum(['docs', 'sheets', 'presentations']).describe(
+        "ファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート), 'presentations'(スライド)"
+      ),
+      tabId: z.string().optional().describe("ドキュメントの場合：読み取るタブのID"),
+      range: z.string().optional().describe("スプレッドシートの場合：読み取る範囲（例: Sheet1!A1:B10）"),
+      pageNumber: z.number().optional().describe("スライドの場合：読み取るページ番号（1から開始）")
+    },
+    async ({ fileId, fileType, tabId, range, pageNumber }) => {
+      try {
+        const auth = await getAuthClient();
+        const authError = checkAuthAndReturnError(auth);
+        if (authError) return authError;
+
+        const options: { tabId?: string; range?: string; pageNumber?: number } = {};
+        if (tabId) options.tabId = tabId;
+        if (range) options.range = range;
+        if (pageNumber) options.pageNumber = pageNumber;
+
+        const driveService = new DriveService(auth);
+        const result = await driveService.getFileDetail(
+          fileId, 
+          fileType as 'docs' | 'sheets' | 'presentations',
+          options
+        );
+
+        return createSuccessResponse(result);
+      } catch (error: any) {
+        return createErrorResponse("ファイル詳細読み取りに失敗しました", error);
+      }
+    }
+  );
+
+  // 統合的なファイル値挿入ツール
+  server.tool(
+    "g_drive_insert_value",
+    "ドキュメントまたはスプレッドシートに値を挿入する（ファイル種別に応じて適切なツールを呼び出し）",
+    {
+      fileId: z.string().describe("挿入対象ファイルのID"),
+      fileType: z.enum(['docs', 'sheets']).describe("ファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート)"),
+      // ドキュメント用パラメータ
+      location: z.number().optional().describe("ドキュメントの場合：挿入位置（文字インデックス）"),
+      text: z.string().optional().describe("ドキュメントの場合：挿入するテキスト"),
+      // スプレッドシート用パラメータ
+      range: z.string().optional().describe("スプレッドシートの場合：挿入範囲（例: Sheet1!A1）"),
+      values: z.array(z.array(z.any())).optional().describe("スプレッドシートの場合：挿入する値の2次元配列"),
+      insertPosition: z.number().optional().describe("スプレッドシートの場合：挿入する行番号（1から開始、省略時は末尾に追加）"),
+    },
+    async ({ fileId, fileType, location, text, range, values, insertPosition }) => {
+      try {
+        const auth = await getAuthClient();
+        const authError = checkAuthAndReturnError(auth);
+        if (authError) return authError;
+
+        if (fileType === 'docs') {
+          // ドキュメントの場合
+          if (location === undefined || text === undefined) {
+            return createMissingParametersError("ドキュメントへの挿入には location と text パラメータが必要です");
+          }
+
+          const docsService = new DocsService(auth);
+          const result = await docsService.insertTextToDoc(fileId, location, text);
+          
+          return createSuccessResponse({
+            status: "success",
+            message: "ドキュメントにテキストを挿入しました",
+            fileType: "docs",
+            result
+          });
+
+        } else if (fileType === 'sheets') {
+          // スプレッドシートの場合
+          if (range === undefined || values === undefined) {
+            return createMissingParametersError("スプレッドシートへの挿入には range と values パラメータが必要です");
+          }
+
+          const sheetsService = new SheetsService(auth);
+          
+          if (insertPosition) {
+            // 指定位置に挿入
+            await sheetsService.insertSheetValuesAtPosition(fileId, range, values, insertPosition);
+            return createSuccessResponse({
+              status: "success",
+              message: `スプレッドシートの${insertPosition}行目に値を挿入しました`,
+              fileType: "sheets"
+            });
+          } else {
+            // 末尾に追加
+            await sheetsService.appendSheetValues(fileId, range, values);
+            return createSuccessResponse({
+              status: "success",
+              message: "スプレッドシートの末尾に値を追加しました",
+              fileType: "sheets"
+            });
           }
         }
 
-        // ファイルを作成
-        const createdFile = await driveService.createFile(fileName, fileType, folderId);
+        return createUnsupportedFileTypeError(fileType);
 
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                status: "success",
-                message: "ファイルが正常に作成されました",
-                file: {
-                  id: createdFile.id,
-                  name: `[${createdFile.name}](${createdFile.webViewLink})`,
-                  type: createdFile.type,
-                  link: createdFile.webViewLink
-                }
-              }, null, 2)
-            }
-          ],
-        };
       } catch (error: any) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `ファイル作成に失敗しました: ${error.message || String(error)}`
+        return createErrorResponse("ファイルへの値挿入に失敗しました", error);
+      }
+    }
+  );
+
+  // ファイル構造取得ツール
+  server.tool(
+    "g_drive_get_file_structure",
+    "ファイルの構造を取得する（ドキュメント、スプレッドシート対応）",
+    {
+      fileId: z.string().describe("ファイルのID"),
+      fileType: z.enum(['docs', 'sheets']).describe("ファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート)")
+    },
+    async ({ fileId, fileType }) => {
+      try {
+        const auth = await getAuthClient();
+        const authError = checkAuthAndReturnError(auth);
+        if (authError) return authError;
+
+        if (fileType === 'docs') {
+          // ドキュメントの場合：タブ一覧を取得
+          const docsService = new DocsService(auth);
+          const tabs = await docsService.getDocumentTabs(fileId);
+          
+          return createSuccessResponse({
+            status: "success",
+            fileType: "docs",
+            fileId: fileId,
+            structure: {
+              tabs: tabs,
+              tabCount: tabs.length
             }
-          ],
-          isError: true
-        };
+          });
+
+        } else if (fileType === 'sheets') {
+          // スプレッドシートの場合：シート一覧を取得
+          const sheetsService = new SheetsService(auth);
+          const sheets = await sheetsService.getSpreadsheetSheets(fileId);
+          
+          return createSuccessResponse({
+            status: "success",
+            fileType: "sheets",
+            fileId: fileId,
+            structure: {
+              sheets: sheets,
+              sheetCount: sheets.length
+            }
+          });
+        }
+
+        return createUnsupportedFileTypeError(fileType);
+
+      } catch (error: any) {
+        return createErrorResponse("ファイル構造の取得に失敗しました", error);
       }
     }
   );

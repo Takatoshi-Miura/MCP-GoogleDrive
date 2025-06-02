@@ -99,7 +99,7 @@ export class DriveService {
             switch (file.mimeType) {
               case 'application/vnd.google-apps.document':
                 const docsService = new DocsService(this.auth);
-                const docContent = await docsService.getDocContent(file.id!);
+                const docContent = await docsService.getDocText(file.id!);
                 content = docContent.tabs.map(tab => tab.text || '').join(' ');
                 type = 'Google Document';
                 break;
@@ -360,105 +360,152 @@ export class DriveService {
     return { files, responseKey, useSpecialHandling };
   }
 
-  // 指定されたフォルダに新しいファイルを作成する関数
-  async createFile(fileName: string, fileType: 'docs' | 'sheets' | 'presentations', folderId?: string): Promise<{
-    id: string;
-    name: string;
-    webViewLink: string;
-    type: string;
+  // 統合的なファイル内容読み取り機能
+  async readFileContent(fileId: string, fileType: 'docs' | 'sheets' | 'presentations' | 'pdf'): Promise<{
+    status: string;
+    fileId: string;
+    fileType: string;
+    content: any;
   }> {
-    const drive = google.drive({ version: "v3", auth: this.auth });
-    
     try {
-      // ファイルタイプに応じたMIMEタイプを設定
-      let mimeType: string;
-      let type: string;
-      
+      let content: any;
+
       switch (fileType) {
         case 'docs':
-          mimeType = 'application/vnd.google-apps.document';
-          type = 'Google Document';
+          const docsService = new DocsService(this.auth);
+          content = await docsService.getDocText(fileId);
           break;
+
         case 'sheets':
-          mimeType = 'application/vnd.google-apps.spreadsheet';
-          type = 'Google Spreadsheet';
+          const sheetsService = new SheetsService(this.auth);
+          content = await sheetsService.getSpreadsheetText(fileId);
           break;
+
         case 'presentations':
-          mimeType = 'application/vnd.google-apps.presentation';
-          type = 'Google Slides';
+          const slidesService = new SlidesService(this.auth);
+          content = await slidesService.getPresentationText(fileId);
           break;
+
+        case 'pdf':
+          const pdfService = new PdfService(this.auth);
+          const pdfResult = await pdfService.extractPdfText(fileId);
+          content = pdfResult;
+          break;
+
         default:
           throw new Error(`サポートされていないファイルタイプです: ${fileType}`);
       }
 
-      // ファイル作成のメタデータ
-      const fileMetadata: any = {
-        name: fileName,
-        mimeType: mimeType,
+      return {
+        status: 'success',
+        fileId,
+        fileType,
+        content
       };
+    } catch (error) {
+      console.error(`ファイル内容読み取りエラー (${fileType}):`, error);
+      throw error;
+    }
+  }
 
-      // フォルダが指定されている場合は親フォルダを設定
-      if (folderId) {
-        fileMetadata.parents = [folderId];
-      }
+  // 統合的なファイルコメント取得機能
+  async getFileComments(fileId: string, fileType: 'docs' | 'sheets' | 'presentations'): Promise<{
+    status: string;
+    fileId: string;
+    fileType: string;
+    comments: any;
+  }> {
+    try {
+      let comments: any;
 
-      // ファイルを作成
-      const response = await drive.files.create({
-        requestBody: fileMetadata,
-        fields: 'id, name, webViewLink'
-      });
+      switch (fileType) {
+        case 'docs':
+          const docsService = new DocsService(this.auth);
+          comments = await docsService.getDocumentComments(fileId);
+          break;
 
-      if (!response.data.id || !response.data.name || !response.data.webViewLink) {
-        throw new Error('ファイル作成に失敗しました: 必要な情報が取得できませんでした');
+        case 'sheets':
+          const sheetsService = new SheetsService(this.auth);
+          comments = await sheetsService.getSpreadsheetComments(fileId);
+          break;
+
+        case 'presentations':
+          const slidesService = new SlidesService(this.auth);
+          comments = await slidesService.getPresentationComments(fileId);
+          break;
+
+        default:
+          throw new Error(`サポートされていないファイルタイプです: ${fileType}`);
       }
 
       return {
-        id: response.data.id,
-        name: response.data.name,
-        webViewLink: response.data.webViewLink,
-        type: type
+        status: 'success',
+        fileId,
+        fileType,
+        comments
       };
     } catch (error) {
-      console.error("ファイル作成エラー:", error);
+      console.error(`ファイルコメント取得エラー (${fileType}):`, error);
       throw error;
     }
   }
 
-  // フォルダ一覧を取得する関数
-  async listFolders(): Promise<FileInfo[]> {
-    const drive = google.drive({ version: "v3", auth: this.auth });
-    
-    try {
-      const response = await drive.files.list({
-        q: "mimeType='application/vnd.google-apps.folder' and trashed=false",
-        pageSize: 50,
-        fields: "files(id, name, createdTime, modifiedTime, webViewLink)",
-        orderBy: "name"
-      });
-      
-      return response.data.files || [];
-    } catch (error) {
-      console.error("フォルダ一覧取得エラー:", error);
-      throw error;
+  // ファイル詳細読み取り機能（ページ単位）
+  async getFileDetail(
+    fileId: string, 
+    fileType: 'docs' | 'sheets' | 'presentations',
+    options: {
+      tabId?: string;      // ドキュメント用
+      range?: string;      // スプレッドシート用
+      pageNumber?: number; // スライド用
     }
-  }
-
-  // フォルダIDの存在確認
-  async validateFolderId(folderId: string): Promise<boolean> {
-    const drive = google.drive({ version: "v3", auth: this.auth });
-    
+  ): Promise<{
+    status: string;
+    fileId: string;
+    fileType: string;
+    data: any;
+  }> {
     try {
-      const response = await drive.files.get({
-        fileId: folderId,
-        fields: "id, mimeType, trashed"
-      });
-      
-      // フォルダかどうかとゴミ箱に入っていないかを確認
-      return response.data.mimeType === 'application/vnd.google-apps.folder' && 
-             !response.data.trashed;
+      let data: any;
+
+      switch (fileType) {
+        case 'docs':
+          if (!options.tabId) {
+            throw new Error('ドキュメントの詳細読み取りにはタブIDが必要です');
+          }
+          const docsService = new DocsService(this.auth);
+          data = await docsService.getDocumentTabText(fileId, options.tabId);
+          break;
+
+        case 'sheets':
+          if (!options.range) {
+            throw new Error('スプレッドシートの詳細読み取りには範囲指定が必要です');
+          }
+          const sheetsService = new SheetsService(this.auth);
+          data = await sheetsService.getSheetValues(fileId, options.range);
+          break;
+
+        case 'presentations':
+          if (!options.pageNumber) {
+            throw new Error('スライドの詳細読み取りにはページ番号が必要です');
+          }
+          const slidesService = new SlidesService(this.auth);
+          data = await slidesService.getSlideByPageNumber(fileId, options.pageNumber);
+          break;
+
+        default:
+          throw new Error(`サポートされていないファイルタイプです: ${fileType}`);
+      }
+
+      return {
+        status: 'success',
+        fileId,
+        fileType,
+        data
+      };
     } catch (error) {
-      console.error("フォルダID検証エラー:", error);
-      return false;
+      console.error(`ファイル詳細読み取りエラー (${fileType}):`, error);
+      throw error;
     }
   }
 } 
