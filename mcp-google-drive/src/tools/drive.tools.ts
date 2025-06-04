@@ -303,4 +303,112 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
       }
     }
   );
+
+  // グラフ作成ツール
+  server.tool(
+    "g_drive_create_chart",
+    "指定されたファイルにグラフを作成する（ドキュメント、スプレッドシート、スライド対応）",
+    {
+      fileId: z.string().describe("グラフを作成するファイルのID"),
+      fileType: z.enum(['docs', 'sheets', 'presentations']).describe(
+        "ファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート), 'presentations'(スライド)"
+      ),
+      chartType: z.enum(['COLUMN', 'LINE', 'PIE', 'BAR', 'SCATTER']).describe(
+        "グラフの種類: 'COLUMN'(縦棒), 'LINE'(線), 'PIE'(円), 'BAR'(横棒), 'SCATTER'(散布図)"
+      ),
+      title: z.string().optional().describe("グラフのタイトル"),
+      
+      // ドキュメント用パラメータ
+      sourceSheetId: z.string().optional().describe("ドキュメント・スライドの場合：データソースとなるスプレッドシートのID"),
+      sourceRange: z.string().optional().describe("ドキュメント・スライドの場合：データソースの範囲（例: A1:B10）"),
+      insertIndex: z.number().optional().describe("ドキュメントの場合：挿入位置（文字インデックス）"),
+      
+      // スプレッドシート用パラメータ
+      sheetId: z.number().optional().describe("スプレッドシートの場合：対象シートのID"),
+      dataRange: z.string().optional().describe("スプレッドシートの場合：グラフのデータ範囲（例: A1:B10）"),
+      position: z.object({
+        row: z.number(),
+        column: z.number()
+      }).optional().describe("スプレッドシートの場合：グラフの配置位置"),
+      
+      // スライド用パラメータ
+      slideIndex: z.number().optional().describe("スライドの場合：対象スライドのインデックス（0から開始）"),
+      bounds: z.object({
+        x: z.number(),
+        y: z.number(),
+        width: z.number(),
+        height: z.number()
+      }).optional().describe("スライドの場合：グラフの位置とサイズ"),
+      existingChartId: z.number().optional().describe("スライドの場合：既存のスプレッドシートチャートIDを指定してリンク"),
+      
+      // 軸タイトルパラメータ（スプレッドシート用）
+      xAxisTitle: z.string().optional().describe("スプレッドシートの場合：X軸のタイトル（省略時は自動推定）"),
+      yAxisTitle: z.string().optional().describe("スプレッドシートの場合：Y軸のタイトル（省略時は自動推定）")
+    },
+    async ({ 
+      fileId, 
+      fileType, 
+      chartType, 
+      title,
+      sourceSheetId,
+      sourceRange,
+      insertIndex,
+      sheetId,
+      dataRange,
+      position,
+      slideIndex,
+      bounds,
+      existingChartId,
+      xAxisTitle,
+      yAxisTitle
+    }) => {
+      try {
+        const auth = await getAuthClient();
+        const authError = checkAuthAndReturnError(auth);
+        if (authError) return authError;
+
+        // ファイルタイプ別のパラメータ検証
+        if (fileType === 'docs') {
+          if (!sourceSheetId || !sourceRange) {
+            return createMissingParametersError("ドキュメントへのグラフ作成には sourceSheetId と sourceRange が必要です");
+          }
+        } else if (fileType === 'sheets') {
+          if (sheetId === undefined || !dataRange) {
+            return createMissingParametersError("スプレッドシートへのグラフ作成には sheetId と dataRange が必要です");
+          }
+        } else if (fileType === 'presentations') {
+          if (slideIndex === undefined || !sourceSheetId || !sourceRange) {
+            return createMissingParametersError("スライドへのグラフ作成には slideIndex、sourceSheetId、sourceRange が必要です");
+          }
+        }
+
+        const options: any = {
+          title,
+          sourceSheetId,
+          sourceRange,
+          insertIndex,
+          sheetId,
+          dataRange,
+          position,
+          slideIndex,
+          bounds,
+          existingChartId,
+          xAxisTitle,
+          yAxisTitle
+        };
+
+        const driveService = new DriveService(auth);
+        const result = await driveService.createChart(
+          fileId,
+          fileType as 'docs' | 'sheets' | 'presentations',
+          chartType,
+          options
+        );
+
+        return createSuccessResponse(result);
+      } catch (error: any) {
+        return createErrorResponse("グラフ作成に失敗しました", error);
+      }
+    }
+  );
 } 

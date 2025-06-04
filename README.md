@@ -129,5 +129,6 @@ npm run build
 
 ### ファイル編集
 - `g_drive_insert_value` - ドキュメントやスプレッドシートに値を挿入（上書きではなく追加）
+- `g_drive_create_chart` - 指定されたファイルにグラフを作成（棒グラフ、円グラフ、折れ線グラフ、散布図）
 
 **対応ファイル形式**: Google ドキュメント、Google スプレッドシート、Google スライド、PDF

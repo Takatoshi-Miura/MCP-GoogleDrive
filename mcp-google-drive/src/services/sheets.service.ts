@@ -18,10 +18,6 @@ export class SheetsService {
         fields: 'comments(id,content,author,createdTime,modifiedTime,resolved,quotedFileContent,replies,anchor)',
       });
 
-      console.log('=== Raw API Response ===');
-      console.log('Response status:', commentsResponse.status);
-      console.log('Response data:', JSON.stringify(commentsResponse.data, null, 2));
-
       const allComments = commentsResponse.data.comments || [];
       console.log(`=== Found ${allComments.length} comments ===`);
 
@@ -320,6 +316,299 @@ export class SheetsService {
     } catch (error) {
       console.error("スプレッドシートテキスト抽出エラー:", error);
       throw error;
+    }
+  }
+
+  // スプレッドシートにグラフを作成する関数
+  async createChartInSheet(
+    spreadsheetId: string,
+    sheetId: number,
+    chartType: 'COLUMN' | 'LINE' | 'PIE' | 'BAR' | 'SCATTER',
+    dataRange: string,
+    title?: string,
+    position?: { row: number; column: number },
+    axisOptions?: {
+      xAxisTitle?: string;
+      yAxisTitle?: string;
+    }
+  ): Promise<any> {
+    const sheets = google.sheets({ version: "v4", auth: this.auth });
+    try {
+      // dataRangeを解析してソース範囲を決定
+      const { startRow, endRow, startCol, endCol } = this.parseDataRange(dataRange);
+      
+      // データの内容に基づいて適切な軸タイトルを推定
+      const defaultAxisTitles = await this.inferAxisTitles(spreadsheetId, sheetId, startRow, startCol, endCol);
+      
+      // 軸タイトルを決定（パラメータ指定 > 推定値 > デフォルト値の優先順位）
+      const xAxisTitle = axisOptions?.xAxisTitle || defaultAxisTitles.xAxis || "カテゴリ";
+      const yAxisTitle = axisOptions?.yAxisTitle || defaultAxisTitles.yAxis || "値";
+      
+      let chartSpec: any;
+      
+      // 円グラフの場合は専用のpieChartオブジェクトを使用
+      if (chartType === 'PIE') {
+        chartSpec = {
+          title: title || "円グラフ",
+          pieChart: {
+            legendPosition: "RIGHT_LEGEND",
+            domain: {
+              sourceRange: {
+                sources: [
+                  {
+                    sheetId: sheetId,
+                    startRowIndex: startRow,
+                    endRowIndex: endRow,
+                    startColumnIndex: startCol,
+                    endColumnIndex: startCol + 1
+                  }
+                ]
+              }
+            },
+            series: {
+              sourceRange: {
+                sources: [
+                  {
+                    sheetId: sheetId,
+                    startRowIndex: startRow,
+                    endRowIndex: endRow,
+                    startColumnIndex: endCol,
+                    endColumnIndex: endCol + 1
+                  }
+                ]
+              }
+            },
+            threeDimensional: false
+          },
+          // 凡例のテキストフォーマットを追加
+          titleTextFormat: {
+            fontFamily: "Arial",
+            fontSize: 14,
+            bold: true
+          }
+        };
+      } else {
+        // その他のチャートタイプはbasicChartを使用
+        chartSpec = {
+          title: title || `${chartType}グラフ`,
+          basicChart: {
+            chartType: chartType,
+            legendPosition: "BOTTOM_LEGEND",
+            axis: [
+              {
+                position: "BOTTOM_AXIS",
+                title: xAxisTitle
+              },
+              {
+                position: "LEFT_AXIS", 
+                title: yAxisTitle
+              }
+            ],
+            domains: [
+              {
+                domain: {
+                  sourceRange: {
+                    sources: [
+                      {
+                        sheetId: sheetId,
+                        startRowIndex: startRow,
+                        endRowIndex: endRow,
+                        startColumnIndex: startCol,
+                        endColumnIndex: startCol + 1
+                      }
+                    ]
+                  }
+                }
+              }
+            ],
+            series: [
+              {
+                series: {
+                  sourceRange: {
+                    sources: [
+                      {
+                        sheetId: sheetId,
+                        startRowIndex: startRow,
+                        endRowIndex: endRow,
+                        startColumnIndex: endCol,
+                        endColumnIndex: endCol + 1
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        };
+      }
+
+      console.log(`チャートスペック (${chartType}):`, JSON.stringify(chartSpec, null, 2));
+
+      const response = await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              addChart: {
+                chart: {
+                  spec: chartSpec,
+                  position: {
+                    overlayPosition: {
+                      anchorCell: {
+                        sheetId: sheetId,
+                        rowIndex: position?.row || 0,
+                        columnIndex: position?.column || 3
+                      },
+                      offsetXPixels: 0,
+                      offsetYPixels: 0,
+                      widthPixels: 600,
+                      heightPixels: 371
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      });
+
+      return {
+        status: 'success',
+        spreadsheetId,
+        sheetId,
+        chartType,
+        dataRange,
+        title,
+        position,
+        axisOptions: chartType === 'PIE' ? undefined : { xAxisTitle, yAxisTitle },
+        response: response.data
+      };
+    } catch (error) {
+      console.error("スプレッドシートへのグラフ作成エラー:", error);
+      return {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'グラフ作成に失敗しました',
+        spreadsheetId,
+        sheetId,
+        chartType,
+        dataRange
+      };
+    }
+  }
+
+  // データの内容に基づいて適切な軸タイトルを推定する関数
+  private async inferAxisTitles(
+    spreadsheetId: string, 
+    sheetId: number, 
+    startRow: number, 
+    startCol: number, 
+    endCol: number
+  ): Promise<{ xAxis: string; yAxis: string }> {
+    const sheets = google.sheets({ version: "v4", auth: this.auth });
+    
+    try {
+      // ヘッダー行（最初の行）のデータを取得
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${this.getColumnLetter(startCol)}${startRow + 1}:${this.getColumnLetter(endCol)}${startRow + 1}`
+      });
+      
+      const headerValues = response.data.values?.[0] || [];
+      
+      // X軸（最初の列）とY軸（最後の列）のヘッダーを取得
+      const xAxisHeader = headerValues[0] || "";
+      const yAxisHeader = headerValues[headerValues.length - 1] || "";
+      
+      // ヘッダーの内容に基づいて適切なタイトルを推定
+      const xAxisTitle = this.normalizeAxisTitle(xAxisHeader);
+      const yAxisTitle = this.normalizeAxisTitle(yAxisHeader);
+      
+      console.log(`推定された軸タイトル - X軸: "${xAxisTitle}", Y軸: "${yAxisTitle}"`);
+      
+      return {
+        xAxis: xAxisTitle,
+        yAxis: yAxisTitle
+      };
+    } catch (error) {
+      console.error("軸タイトル推定エラー:", error);
+      // エラーの場合はデフォルト値を返す
+      return {
+        xAxis: "カテゴリ",
+        yAxis: "値"
+      };
+    }
+  }
+
+  // 軸タイトルを正規化する関数
+  private normalizeAxisTitle(headerText: string): string {
+    if (!headerText || typeof headerText !== 'string') {
+      return "";
+    }
+    
+    const text = headerText.trim();
+    
+    // 日付関連のパターン
+    if (/日付|date|時間|time|年月|月|年/i.test(text)) {
+      return "日付";
+    }
+    
+    // 金額関連のパターン
+    if (/金額|価格|円|¥|amount|price|cost|費用|収入|支出|資産|残高/i.test(text)) {
+      return "金額（円）";
+    }
+    
+    // 数量関連のパターン
+    if (/数量|個数|件数|count|quantity|number|ポイント|スコア|点数/i.test(text)) {
+      return "数量";
+    }
+    
+    // パーセンテージ関連のパターン
+    if (/率|％|%|percent|ratio|割合/i.test(text)) {
+      return "割合（%）";
+    }
+    
+    // そのまま使用（ただし長すぎる場合は短縮）
+    if (text.length > 15) {
+      return text.substring(0, 12) + "...";
+    }
+    
+    return text;
+  }
+
+  // 列番号を列文字に変換するヘルパー関数
+  private getColumnLetter(columnIndex: number): string {
+    let result = '';
+    while (columnIndex >= 0) {
+      result = String.fromCharCode(65 + (columnIndex % 26)) + result;
+      columnIndex = Math.floor(columnIndex / 26) - 1;
+    }
+    return result;
+  }
+
+  // データ範囲文字列を解析するヘルパー関数
+  private parseDataRange(dataRange: string): { startRow: number; endRow: number; startCol: number; endCol: number } {
+    try {
+      // A1:B166 形式の範囲を解析
+      const match = dataRange.match(/([A-Z]+)(\d+):([A-Z]+)(\d+)/);
+      if (!match) {
+        throw new Error(`無効なデータ範囲形式: ${dataRange}`);
+      }
+
+      const [, startColStr, startRowStr, endColStr, endRowStr] = match;
+      
+      // 既存のgetColumnIndexメソッドを活用して列文字を数値に変換
+      const startCol = this.getColumnIndex(startColStr);
+      const endCol = this.getColumnIndex(endColStr);
+      
+      // 行番号を0ベースに変換
+      const startRow = parseInt(startRowStr) - 1;
+      const endRow = parseInt(endRowStr);
+      
+      return { startRow, endRow, startCol, endCol };
+    } catch (error) {
+      console.error(`データ範囲解析エラー: ${dataRange}`, error);
+      // デフォルト値を返す
+      return { startRow: 0, endRow: 10, startCol: 0, endCol: 1 };
     }
   }
 } 

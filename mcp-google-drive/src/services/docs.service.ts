@@ -416,4 +416,85 @@ export class DocsService {
       throw error;
     }
   }
+
+  // Googleドキュメントにグラフを作成する関数
+  async createChartInDoc(
+    documentId: string,
+    chartType: 'COLUMN' | 'LINE' | 'PIE' | 'BAR' | 'SCATTER',
+    sourceSheetId: string,
+    sourceRange: string,
+    title?: string,
+    insertIndex?: number
+  ): Promise<any> {
+    const docs = google.docs({ version: "v1", auth: this.auth });
+    try {
+      // Google Charts APIで使用するチャートタイプを変換
+      let googleChartType: string;
+      switch (chartType) {
+        case 'PIE':
+          googleChartType = 'pie';
+          break;
+        case 'COLUMN':
+          googleChartType = 'column';
+          break;
+        case 'LINE':
+          googleChartType = 'line';
+          break;
+        case 'BAR':
+          googleChartType = 'bar';
+          break;
+        case 'SCATTER':
+          googleChartType = 'scatter';
+          break;
+      }
+
+      // スプレッドシートからグラフを作成してドキュメントに挿入
+      const response = await docs.documents.batchUpdate({
+        documentId,
+        requestBody: {
+          requests: [
+            {
+              insertInlineImage: {
+                location: {
+                  index: insertIndex || 1,
+                },
+                uri: `https://docs.google.com/spreadsheets/d/${sourceSheetId}/gviz/tq?tqx=out:png&tq=SELECT%20*%20FROM%20${sourceRange}&cht=${googleChartType}`,
+                objectSize: {
+                  height: {
+                    magnitude: 300,
+                    unit: "PT"
+                  },
+                  width: {
+                    magnitude: 400,
+                    unit: "PT"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      });
+
+      return {
+        status: 'success',
+        documentId,
+        chartType,
+        sourceSheetId,
+        sourceRange,
+        title,
+        insertIndex,
+        response: response.data
+      };
+    } catch (error) {
+      console.error("Googleドキュメントへのグラフ作成エラー:", error);
+      return {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'グラフ作成に失敗しました',
+        documentId,
+        chartType,
+        sourceSheetId,
+        sourceRange
+      };
+    }
+  }
 } 

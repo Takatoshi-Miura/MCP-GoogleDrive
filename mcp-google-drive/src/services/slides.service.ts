@@ -167,4 +167,332 @@ export class SlidesService {
       throw error;
     }
   }
+
+  // Google スライドにグラフを作成する関数
+  async createChartInSlide(
+    presentationId: string,
+    slideIndex: number,
+    chartType: 'COLUMN' | 'LINE' | 'PIE' | 'BAR' | 'SCATTER',
+    sourceSheetId: string,
+    sourceRange: string,
+    title?: string,
+    bounds?: { x: number; y: number; width: number; height: number },
+    existingChartId?: number
+  ): Promise<any> {
+    const slides = google.slides({ version: "v1", auth: this.auth });
+    const sheets = google.sheets({ version: "v4", auth: this.auth });
+    
+    try {
+      // プレゼンテーションの情報を取得してスライドIDを取得
+      const presentation = await slides.presentations.get({
+        presentationId,
+      });
+
+      if (!presentation.data.slides || slideIndex >= presentation.data.slides.length) {
+        throw new Error(`スライドインデックス ${slideIndex} は範囲外です`);
+      }
+
+      const slideId = presentation.data.slides[slideIndex].objectId;
+      const chartObjectId = `chart_${Date.now()}`;
+
+      // デフォルトの位置とサイズ
+      const defaultBounds = {
+        x: bounds?.x || 100,
+        y: bounds?.y || 100,
+        width: bounds?.width || 400,
+        height: bounds?.height || 300
+      };
+
+      let chartId = existingChartId;
+
+      // 既存のチャートIDが指定されていない場合、スプレッドシートに新しいチャートを作成
+      if (!chartId) {
+        console.log('スプレッドシートに新しいチャートを作成中...');
+        
+        // スプレッドシートの情報を取得
+        const spreadsheet = await sheets.spreadsheets.get({
+          spreadsheetId: sourceSheetId,
+        });
+
+        const sheetId = spreadsheet.data.sheets?.[0]?.properties?.sheetId || 0;
+
+        // スプレッドシートにチャートを作成
+        const chartResponse = await sheets.spreadsheets.batchUpdate({
+          spreadsheetId: sourceSheetId,
+          requestBody: {
+            requests: [
+              {
+                addChart: {
+                  chart: {
+                    spec: chartType === 'PIE' ? {
+                      title: title || '円グラフ',
+                      pieChart: {
+                        legendPosition: 'BOTTOM_LEGEND',
+                        domain: {
+                          sourceRange: {
+                            sources: [
+                              {
+                                sheetId: sheetId,
+                                startRowIndex: 0,
+                                endRowIndex: 150,
+                                startColumnIndex: 0,
+                                endColumnIndex: 1
+                              }
+                            ]
+                          }
+                        },
+                        series: {
+                          sourceRange: {
+                            sources: [
+                              {
+                                sheetId: sheetId,
+                                startRowIndex: 0,
+                                endRowIndex: 150,
+                                startColumnIndex: 1,
+                                endColumnIndex: 2
+                              }
+                            ]
+                          }
+                        },
+                        threeDimensional: false
+                      }
+                    } : {
+                      title: title || 'グラフ',
+                      basicChart: {
+                        chartType: chartType,
+                        legendPosition: 'BOTTOM_LEGEND',
+                        axis: [
+                          {
+                            position: 'BOTTOM_AXIS',
+                            title: 'X軸',
+                          },
+                          {
+                            position: 'LEFT_AXIS',
+                            title: 'Y軸',
+                          }
+                        ],
+                        domains: [
+                          {
+                            domain: {
+                              sourceRange: {
+                                sources: [
+                                  {
+                                    sheetId: sheetId,
+                                    startRowIndex: 0,
+                                    endRowIndex: 150,
+                                    startColumnIndex: 0,
+                                    endColumnIndex: 1
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        ],
+                        series: [
+                          {
+                            series: {
+                              sourceRange: {
+                                sources: [
+                                  {
+                                    sheetId: sheetId,
+                                    startRowIndex: 0,
+                                    endRowIndex: 150,
+                                    startColumnIndex: 1,
+                                    endColumnIndex: 2
+                                  }
+                                ]
+                              }
+                            },
+                            targetAxis: 'LEFT_AXIS'
+                          }
+                        ]
+                      }
+                    },
+                    position: {
+                      overlayPosition: {
+                        anchorCell: {
+                          sheetId: sheetId,
+                          rowIndex: 5,
+                          columnIndex: 4
+                        },
+                        widthPixels: 600,
+                        heightPixels: 371
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        });
+
+        // 作成されたチャートのIDを取得
+        const addChartReply = chartResponse.data.replies?.[0]?.addChart;
+        if (addChartReply?.chart?.chartId) {
+          chartId = addChartReply.chart.chartId;
+          console.log(`新しいチャートが作成されました。チャートID: ${chartId}`);
+        } else {
+          throw new Error('スプレッドシートでのチャート作成に失敗しました');
+        }
+      }
+
+      // スライドにチャートを追加
+      console.log(`スライドにチャートを追加中... チャートID: ${chartId}`);
+      
+      const response = await slides.presentations.batchUpdate({
+        presentationId,
+        requestBody: {
+          requests: [
+            {
+              createSheetsChart: {
+                objectId: chartObjectId,
+                spreadsheetId: sourceSheetId,
+                chartId: chartId,
+                linkingMode: "LINKED",
+                elementProperties: {
+                  pageObjectId: slideId,
+                  size: {
+                    width: {
+                      magnitude: defaultBounds.width,
+                      unit: "PT"
+                    },
+                    height: {
+                      magnitude: defaultBounds.height,
+                      unit: "PT"
+                    }
+                  },
+                  transform: {
+                    scaleX: 1,
+                    scaleY: 1,
+                    translateX: defaultBounds.x,
+                    translateY: defaultBounds.y,
+                    unit: "PT"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      });
+
+      return {
+        status: 'success',
+        presentationId,
+        slideIndex,
+        slideId,
+        chartObjectId,
+        chartId,
+        chartType,
+        sourceSheetId,
+        sourceRange,
+        title,
+        bounds: defaultBounds,
+        response: response.data
+      };
+    } catch (error) {
+      console.error("Google スライドへのグラフ作成エラー:", error);
+      return {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'グラフ作成に失敗しました',
+        presentationId,
+        slideIndex,
+        chartType,
+        sourceSheetId,
+        sourceRange,
+        details: error
+      };
+    }
+  }
+
+  // 既存のスプレッドシートチャートをスライドにリンクする関数
+  async linkExistingChartToSlide(
+    presentationId: string,
+    slideIndex: number,
+    sourceSheetId: string,
+    chartId: number,
+    bounds?: { x: number; y: number; width: number; height: number }
+  ): Promise<any> {
+    const slides = google.slides({ version: "v1", auth: this.auth });
+    
+    try {
+      // プレゼンテーションの情報を取得してスライドIDを取得
+      const presentation = await slides.presentations.get({
+        presentationId,
+      });
+
+      if (!presentation.data.slides || slideIndex >= presentation.data.slides.length) {
+        throw new Error(`スライドインデックス ${slideIndex} は範囲外です`);
+      }
+
+      const slideId = presentation.data.slides[slideIndex].objectId;
+      const chartObjectId = `linked_chart_${Date.now()}`;
+
+      // デフォルトの位置とサイズ
+      const defaultBounds = {
+        x: bounds?.x || 100,
+        y: bounds?.y || 100,
+        width: bounds?.width || 400,
+        height: bounds?.height || 300
+      };
+
+      const response = await slides.presentations.batchUpdate({
+        presentationId,
+        requestBody: {
+          requests: [
+            {
+              createSheetsChart: {
+                objectId: chartObjectId,
+                spreadsheetId: sourceSheetId,
+                chartId: chartId,
+                linkingMode: "LINKED",
+                elementProperties: {
+                  pageObjectId: slideId,
+                  size: {
+                    width: {
+                      magnitude: defaultBounds.width,
+                      unit: "PT"
+                    },
+                    height: {
+                      magnitude: defaultBounds.height,
+                      unit: "PT"
+                    }
+                  },
+                  transform: {
+                    scaleX: 1,
+                    scaleY: 1,
+                    translateX: defaultBounds.x,
+                    translateY: defaultBounds.y,
+                    unit: "PT"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      });
+
+      return {
+        status: 'success',
+        presentationId,
+        slideIndex,
+        slideId,
+        chartObjectId,
+        chartId,
+        sourceSheetId,
+        bounds: defaultBounds,
+        response: response.data
+      };
+    } catch (error) {
+      console.error("既存チャートのリンクエラー:", error);
+      return {
+        status: 'error',
+        error: error instanceof Error ? error.message : '既存チャートのリンクに失敗しました',
+        presentationId,
+        slideIndex,
+        sourceSheetId,
+        chartId,
+        details: error
+      };
+    }
+  }
 } 

@@ -508,4 +508,132 @@ export class DriveService {
       throw error;
     }
   }
+
+  // 統合的なグラフ作成機能
+  async createChart(
+    fileId: string,
+    fileType: 'docs' | 'sheets' | 'presentations',
+    chartType: 'COLUMN' | 'LINE' | 'PIE' | 'BAR' | 'SCATTER',
+    options: {
+      // 共通オプション
+      title?: string;
+      
+      // ドキュメント用オプション
+      sourceSheetId?: string;  // ドキュメントの場合は必須
+      sourceRange?: string;    // ドキュメントの場合は必須
+      insertIndex?: number;    // ドキュメントの場合
+      
+      // スプレッドシート用オプション
+      sheetId?: number;        // スプレッドシートの場合は必須
+      dataRange?: string;      // スプレッドシートの場合は必須
+      position?: { row: number; column: number }; // スプレッドシートの場合
+      
+      // スライド用オプション
+      slideIndex?: number;     // スライドの場合は必須
+      bounds?: { x: number; y: number; width: number; height: number }; // スライドの場合
+      existingChartId?: number; // 既存のチャートIDを指定する場合
+      
+      // 軸タイトルオプション（スプレッドシート用）
+      xAxisTitle?: string;     // X軸のタイトル
+      yAxisTitle?: string;     // Y軸のタイトル
+    }
+  ): Promise<{
+    status: string;
+    fileId: string;
+    fileType: string;
+    chartType: string;
+    result: any;
+  }> {
+    try {
+      let result: any;
+
+      switch (fileType) {
+        case 'docs':
+          if (!options.sourceSheetId || !options.sourceRange) {
+            throw new Error('ドキュメントへのグラフ作成には sourceSheetId と sourceRange が必要です');
+          }
+          const docsService = new DocsService(this.auth);
+          result = await docsService.createChartInDoc(
+            fileId,
+            chartType,
+            options.sourceSheetId,
+            options.sourceRange,
+            options.title,
+            options.insertIndex
+          );
+          break;
+
+        case 'sheets':
+          if (options.sheetId === undefined || !options.dataRange) {
+            throw new Error('スプレッドシートへのグラフ作成には sheetId と dataRange が必要です');
+          }
+          const sheetsService = new SheetsService(this.auth);
+          result = await sheetsService.createChartInSheet(
+            fileId,
+            options.sheetId,
+            chartType,
+            options.dataRange,
+            options.title,
+            options.position,
+            {
+              xAxisTitle: options.xAxisTitle,
+              yAxisTitle: options.yAxisTitle
+            }
+          );
+          break;
+
+        case 'presentations':
+          if (options.slideIndex === undefined || !options.sourceSheetId || !options.sourceRange) {
+            throw new Error('スライドへのグラフ作成には slideIndex、sourceSheetId、sourceRange が必要です');
+          }
+          const slidesService = new SlidesService(this.auth);
+          
+          // 既存のチャートIDが指定されている場合は、それを使用してリンク
+          if (options.existingChartId) {
+            result = await slidesService.linkExistingChartToSlide(
+              fileId,
+              options.slideIndex,
+              options.sourceSheetId,
+              options.existingChartId,
+              options.bounds
+            );
+          } else {
+            // 新しいチャートを作成
+            result = await slidesService.createChartInSlide(
+              fileId,
+              options.slideIndex,
+              chartType,
+              options.sourceSheetId,
+              options.sourceRange,
+              options.title,
+              options.bounds,
+              options.existingChartId
+            );
+          }
+          break;
+
+        default:
+          throw new Error(`サポートされていないファイルタイプです: ${fileType}`);
+      }
+
+      return {
+        status: 'success',
+        fileId,
+        fileType,
+        chartType,
+        result
+      };
+    } catch (error) {
+      console.error(`グラフ作成エラー (${fileType}):`, error);
+      return {
+        status: 'error',
+        fileId,
+        fileType,
+        chartType,
+        result: {
+          error: error instanceof Error ? error.message : 'グラフ作成に失敗しました'
+        }
+      };
+    }
+  }
 } 
