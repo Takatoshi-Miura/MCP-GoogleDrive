@@ -388,6 +388,27 @@ export class SheetsService {
           }
         };
       } else {
+        // B列以降の全ての列を系列として作成
+        const series = [];
+        for (let col = startCol + 1; col <= endCol; col++) {
+          series.push({
+            series: {
+              sourceRange: {
+                sources: [
+                  {
+                    sheetId: sheetId,
+                    startRowIndex: startRow,
+                    endRowIndex: endRow,
+                    startColumnIndex: col,
+                    endColumnIndex: col + 1
+                  }
+                ]
+              }
+            },
+            targetAxis: "LEFT_AXIS"
+          });
+        }
+
         // その他のチャートタイプはbasicChartを使用
         chartSpec = {
           title: title || `${chartType}グラフ`,
@@ -397,11 +418,19 @@ export class SheetsService {
             axis: [
               {
                 position: "BOTTOM_AXIS",
-                title: xAxisTitle
+                title: xAxisTitle,
+                format: {
+                  fontFamily: "Roboto"
+                },
+                viewWindowOptions: {}
               },
               {
                 position: "LEFT_AXIS", 
-                title: yAxisTitle
+                title: yAxisTitle,
+                format: {
+                  fontFamily: "Roboto"
+                },
+                viewWindowOptions: {}
               }
             ],
             domains: [
@@ -421,24 +450,13 @@ export class SheetsService {
                 }
               }
             ],
-            series: [
-              {
-                series: {
-                  sourceRange: {
-                    sources: [
-                      {
-                        sheetId: sheetId,
-                        startRowIndex: startRow,
-                        endRowIndex: endRow,
-                        startColumnIndex: endCol,
-                        endColumnIndex: endCol + 1
-                      }
-                    ]
-                  }
-                }
-              }
-            ]
-          }
+            series: series
+          },
+          hiddenDimensionStrategy: "SKIP_HIDDEN_ROWS_AND_COLUMNS",
+          titleTextFormat: {
+            fontFamily: "Roboto"
+          },
+          fontName: "Roboto"
         };
       }
 
