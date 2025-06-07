@@ -478,11 +478,39 @@ export class DriveService {
           break;
 
         case 'sheets':
-          if (!options.range) {
-            throw new Error('スプレッドシートの詳細読み取りには範囲指定が必要です');
-          }
           const sheetsService = new SheetsService(this.auth);
-          data = await sheetsService.getSheetValues(fileId, options.range);
+          if (!options.range) {
+            // 範囲指定がない場合は、シート一覧を取得して最初のシートの全データ範囲を使用
+            const sheets = await sheetsService.getSpreadsheetSheets(fileId);
+            if (sheets.length === 0) {
+              throw new Error('スプレッドシートにシートが存在しません');
+            }
+            const firstSheetTitle = sheets[0].title;
+            const autoRange = await sheetsService.getSheetDataRange(fileId, firstSheetTitle);
+            data = {
+              range: autoRange,
+              values: await sheetsService.getSheetValues(fileId, autoRange),
+              message: `範囲未指定のため、シート "${firstSheetTitle}" の全データ範囲 "${autoRange}" を取得しました`
+            };
+          } else {
+            // 範囲指定がある場合
+            // シート名のみ指定（例: "Sheet1"）の場合は全データ範囲を取得
+            if (!options.range.includes('!')) {
+              // シート名のみの場合
+              const sheetResult = await sheetsService.getSheetByName(fileId, options.range);
+              data = {
+                range: sheetResult.range,
+                values: sheetResult.values,
+                message: `シート "${options.range}" の全データ範囲 "${sheetResult.range}" を取得しました`
+              };
+            } else {
+              // 通常の範囲指定の場合
+              data = {
+                range: options.range,
+                values: await sheetsService.getSheetValues(fileId, options.range)
+              };
+            }
+          }
           break;
 
         case 'presentations':

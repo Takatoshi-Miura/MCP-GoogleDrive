@@ -83,6 +83,97 @@ export class SheetsService {
     }
   }
 
+  // シート内のデータのある範囲を取得する関数
+  async getSheetDataRange(spreadsheetId: string, sheetTitle: string): Promise<string> {
+    const sheets = google.sheets({ version: "v4", auth: this.auth });
+    try {
+      // まず、シートの基本情報を取得してGridPropertiesを確認
+      const spreadsheetInfo = await sheets.spreadsheets.get({
+        spreadsheetId,
+        fields: "sheets(properties(title,sheetId,gridProperties))"
+      });
+      
+      const targetSheet = spreadsheetInfo.data.sheets?.find(
+        sheet => sheet.properties?.title === sheetTitle
+      );
+      
+      if (!targetSheet || !targetSheet.properties) {
+        throw new Error(`シート "${sheetTitle}" が見つかりません`);
+      }
+      
+      // データ範囲を検出するため、大きめの範囲で一度取得
+      const maxColumns = targetSheet.properties.gridProperties?.columnCount || 1000;
+      const testMaxColumnLetter = this.getColumnLetter(maxColumns - 1);
+      const testRange = `${sheetTitle}!A1:${testMaxColumnLetter}1000`;
+      
+      // 値を取得してデータのある範囲を特定
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: testRange,
+        valueRenderOption: 'UNFORMATTED_VALUE'
+      });
+      
+      const values = response.data.values || [];
+      
+      if (values.length === 0) {
+        return `${sheetTitle}!A1:A1`; // データがない場合は最小範囲
+      }
+      
+      // 実際にデータがある最大行と最大列を特定
+      let maxRow = 0;
+      let maxCol = 0;
+      
+      for (let rowIndex = 0; rowIndex < values.length; rowIndex++) {
+        const row = values[rowIndex];
+        if (row && row.length > 0) {
+          // この行にデータがある
+          maxRow = Math.max(maxRow, rowIndex + 1);
+          
+          // この行で最後のデータがある列を特定
+          for (let colIndex = row.length - 1; colIndex >= 0; colIndex--) {
+            if (row[colIndex] !== null && row[colIndex] !== undefined && String(row[colIndex]).trim() !== '') {
+              maxCol = Math.max(maxCol, colIndex + 1);
+              break;
+            }
+          }
+        }
+      }
+      
+      if (maxRow === 0 || maxCol === 0) {
+        return `${sheetTitle}!A1:A1`; // データがない場合
+      }
+      
+      const dataMaxColumnLetter = this.getColumnLetter(maxCol - 1);
+      return `${sheetTitle}!A1:${dataMaxColumnLetter}${maxRow}`;
+      
+    } catch (error) {
+      console.error(`シート "${sheetTitle}" のデータ範囲取得エラー:`, error);
+      // エラーの場合はデフォルトの範囲を返す
+      return `${sheetTitle}!A1:Z1000`;
+    }
+  }
+
+  // 特定のシートの名前からデータ範囲と値を取得する関数
+  async getSheetByName(spreadsheetId: string, sheetName: string): Promise<{
+    sheetName: string;
+    range: string;
+    values: any[][];
+  }> {
+    try {
+      const dataRange = await this.getSheetDataRange(spreadsheetId, sheetName);
+      const values = await this.getSheetValues(spreadsheetId, dataRange);
+      
+      return {
+        sheetName,
+        range: dataRange,
+        values
+      };
+    } catch (error) {
+      console.error(`シート "${sheetName}" の取得エラー:`, error);
+      throw error;
+    }
+  }
+
   // スプレッドシートに値を追加する関数
   async appendSheetValues(
     spreadsheetId: string,
@@ -230,7 +321,8 @@ export class SheetsService {
       for (const sheet of sheets) {
         try {
           const sheetTitle = sheet.title;
-          const range = `${sheetTitle}!A:Z`; // A列からZ列までを対象にする
+          // データのある範囲を自動取得
+          const range = await this.getSheetDataRange(spreadsheetId, sheetTitle);
           
           const values = await this.getSheetValues(spreadsheetId, range);
           result[sheetTitle] = values;
