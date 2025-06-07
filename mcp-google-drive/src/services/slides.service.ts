@@ -168,6 +168,63 @@ export class SlidesService {
     }
   }
 
+  // Google スライドに新しいスライドを作成する関数
+  async createNewSlide(presentationId: string, title?: string): Promise<any> {
+    const slides = google.slides({ version: "v1", auth: this.auth });
+    try {
+      const slideObjectId = `slide_${Date.now()}`;
+      const titleObjectId = `title_${Date.now()}`;
+      
+      const requests: any[] = [
+        {
+          createSlide: {
+            objectId: slideObjectId,
+            slideLayoutReference: {
+              predefinedLayout: "TITLE_AND_BODY"
+            },
+            placeholderIdMappings: [
+              {
+                layoutPlaceholder: {
+                  type: "TITLE"
+                },
+                objectId: titleObjectId
+              }
+            ]
+          }
+        }
+      ];
+
+      // タイトルが指定されている場合はテキストを挿入
+      if (title) {
+        requests.push({
+          insertText: {
+            objectId: titleObjectId,
+            text: title
+          }
+        });
+      }
+
+      const response = await slides.presentations.batchUpdate({
+        presentationId,
+        requestBody: {
+          requests: requests
+        }
+      });
+
+      return {
+        status: 'success',
+        message: `新しいスライド${title ? ` "${title}"` : ''} を作成しました`,
+        presentationId: presentationId,
+        slideTitle: title || "新しいスライド",
+        slideObjectId: slideObjectId,
+        response: response.data
+      };
+    } catch (error) {
+      console.error("Google スライド作成エラー:", error);
+      throw error;
+    }
+  }
+
   // Google スライドにグラフを作成する関数
   async createChartInSlide(
     presentationId: string,

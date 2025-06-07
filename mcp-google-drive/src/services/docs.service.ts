@@ -417,6 +417,24 @@ export class DocsService {
     }
   }
 
+  // Googleドキュメントに新しいタブを作成する関数（API制限により未対応）
+  async createNewTab(documentId: string, title: string): Promise<any> {
+    return {
+      status: 'error',
+      message: `Google Docs APIの制限により、ドキュメントに新しいタブを作成することはできません`,
+      documentId: documentId,
+      tabTitle: title,
+      error: "API_LIMITATION",
+      note: "Google Docs APIでは現在、独立したタブの作成がサポートされていません。代替案として、手動でセクション見出しを追加することをご検討ください。",
+      supportedOperations: [
+        "テキストの挿入・編集",
+        "フォーマットの変更", 
+        "グラフの追加",
+        "既存タブの読み取り"
+      ]
+    };
+  }
+
   // Googleドキュメントにグラフを作成する関数
   async createChartInDoc(
     documentId: string,

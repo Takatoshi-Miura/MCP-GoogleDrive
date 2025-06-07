@@ -636,4 +636,60 @@ export class DriveService {
       };
     }
   }
+
+  // 統合的な新規作成機能
+  async createNew(
+    fileId: string,
+    fileType: 'docs' | 'sheets' | 'presentations',
+    title: string
+  ): Promise<{
+    status: string;
+    fileId: string;
+    fileType: string;
+    title: string;
+    result: any;
+  }> {
+    try {
+      let result: any;
+
+      switch (fileType) {
+        case 'docs':
+          const docsService = new DocsService(this.auth);
+          result = await docsService.createNewTab(fileId, title);
+          break;
+
+        case 'sheets':
+          const sheetsService = new SheetsService(this.auth);
+          result = await sheetsService.createNewSheet(fileId, title);
+          break;
+
+        case 'presentations':
+          const slidesService = new SlidesService(this.auth);
+          result = await slidesService.createNewSlide(fileId, title);
+          break;
+
+        default:
+          throw new Error(`サポートされていないファイルタイプです: ${fileType}`);
+      }
+
+      return {
+        status: 'success',
+        fileId,
+        fileType,
+        title,
+        result
+      };
+    } catch (error) {
+      console.error(`新規作成エラー (${fileType}):`, error);
+      return {
+        status: 'error',
+        fileId,
+        fileType,
+        title,
+        result: {
+          error: error instanceof Error ? error.message : '新規作成に失敗しました'
+        }
+      };
+    }
+  }
 } 

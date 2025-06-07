@@ -4,6 +4,7 @@ import { OAuth2Client } from "google-auth-library";
 import { DriveService } from "../services/drive.service.js";
 import { DocsService } from "../services/docs.service.js";
 import { SheetsService } from "../services/sheets.service.js";
+import { SlidesService } from "../services/slides.service.js";
 import { FileType } from "../types/index.js";
 import { 
   checkAuthAndReturnError, 
@@ -408,6 +409,37 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
         return createSuccessResponse(result);
       } catch (error: any) {
         return createErrorResponse("グラフ作成に失敗しました", error);
+      }
+    }
+  );
+
+  // 新規作成ツール（タブ、シート、スライド）
+  server.tool(
+    "g_drive_create_new_element",
+    "指定されたファイルに新規要素を作成する（ドキュメント：API制限によりタブ作成不可、スプレッドシート：新規シート作成、スライド：新規スライド作成）",
+    {
+      fileId: z.string().describe("新規作成対象ファイルのID"),
+      fileType: z.enum(['docs', 'sheets', 'presentations']).describe(
+        "ファイルの種類: 'docs'(ドキュメント - 新規タブ作成), 'sheets'(スプレッドシート - 新規シート作成), 'presentations'(スライド - 新規スライド作成)"
+      ),
+      title: z.string().describe("新規作成する要素のタイトル（タブ名、シート名、スライドタイトル）")
+    },
+    async ({ fileId, fileType, title }) => {
+      try {
+        const auth = await getAuthClient();
+        const authError = checkAuthAndReturnError(auth);
+        if (authError) return authError;
+
+        const driveService = new DriveService(auth);
+        const result = await driveService.createNew(
+          fileId,
+          fileType as 'docs' | 'sheets' | 'presentations',
+          title
+        );
+
+        return createSuccessResponse(result);
+      } catch (error: any) {
+        return createErrorResponse("新規作成に失敗しました", error);
       }
     }
   );

@@ -319,6 +319,44 @@ export class SheetsService {
     }
   }
 
+  // スプレッドシートに新しいシートを作成する関数
+  async createNewSheet(spreadsheetId: string, title: string): Promise<any> {
+    const sheets = google.sheets({ version: "v4", auth: this.auth });
+    try {
+      const response = await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              addSheet: {
+                properties: {
+                  title: title,
+                  gridProperties: {
+                    rowCount: 1000,
+                    columnCount: 26
+                  }
+                }
+              }
+            }
+          ]
+        }
+      });
+      
+      const newSheet = response.data.replies?.[0]?.addSheet;
+      return {
+        status: 'success',
+        message: `新しいシート "${title}" を作成しました`,
+        spreadsheetId: spreadsheetId,
+        sheetTitle: title,
+        sheetId: newSheet?.properties?.sheetId,
+        response: response.data
+      };
+    } catch (error) {
+      console.error("スプレッドシートシート作成エラー:", error);
+      throw error;
+    }
+  }
+
   // スプレッドシートにグラフを作成する関数
   async createChartInSheet(
     spreadsheetId: string,
