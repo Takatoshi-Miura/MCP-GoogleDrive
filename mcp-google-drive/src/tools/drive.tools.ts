@@ -183,19 +183,27 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
   // 統合的なファイル値挿入ツール
   server.tool(
     "g_drive_insert_value",
-    "ドキュメントまたはスプレッドシートに値を挿入する（ファイル種別に応じて適切なツールを呼び出し）",
+    "ドキュメント、スプレッドシート、またはスライドに値を挿入する（ファイル種別に応じて適切なツールを呼び出し）",
     {
       fileId: z.string().describe("挿入対象ファイルのID"),
-      fileType: z.enum(['docs', 'sheets']).describe("ファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート)"),
+      fileType: z.enum(['docs', 'sheets', 'presentations']).describe("ファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート), 'presentations'(スライド)"),
       // ドキュメント用パラメータ
       location: z.number().optional().describe("ドキュメントの場合：挿入位置（文字インデックス）"),
-      text: z.string().optional().describe("ドキュメントの場合：挿入するテキスト"),
+      text: z.string().optional().describe("ドキュメント・スライドの場合：挿入するテキスト"),
       // スプレッドシート用パラメータ
       range: z.string().optional().describe("スプレッドシートの場合：挿入範囲（例: Sheet1!A1）"),
       values: z.array(z.array(z.any())).optional().describe("スプレッドシートの場合：挿入する値の2次元配列"),
       insertPosition: z.number().optional().describe("スプレッドシートの場合：挿入する行番号（1から開始、省略時は末尾に追加）"),
+      // スライド用パラメータ
+      slideIndex: z.number().optional().describe("スライドの場合：対象スライドのインデックス（0から開始）"),
+      bounds: z.object({
+        x: z.number(),
+        y: z.number(),
+        width: z.number(),
+        height: z.number()
+      }).optional().describe("スライドの場合：テキストボックスの位置とサイズ"),
     },
-    async ({ fileId, fileType, location, text, range, values, insertPosition }) => {
+    async ({ fileId, fileType, location, text, range, values, insertPosition, slideIndex, bounds }) => {
       try {
         const auth = await getAuthClient();
         const authError = checkAuthAndReturnError(auth);
@@ -242,6 +250,22 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
               fileType: "sheets"
             });
           }
+
+        } else if (fileType === 'presentations') {
+          // スライドの場合
+          if (slideIndex === undefined || text === undefined) {
+            return createMissingParametersError("スライドへの挿入には slideIndex と text パラメータが必要です");
+          }
+
+          const slidesService = new SlidesService(auth);
+          const result = await slidesService.insertTextToSlide(fileId, slideIndex, text, bounds);
+          
+          return createSuccessResponse({
+            status: "success",
+            message: "スライドにテキストを挿入しました",
+            fileType: "presentations",
+            result
+          });
         }
 
         return createUnsupportedFileTypeError(fileType);

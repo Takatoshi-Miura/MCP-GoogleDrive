@@ -552,4 +552,91 @@ export class SlidesService {
       };
     }
   }
+
+  // スライドにテキストを挿入する関数
+  async insertTextToSlide(
+    presentationId: string,
+    slideIndex: number,
+    text: string,
+    bounds?: { x?: number; y?: number; width?: number; height?: number }
+  ): Promise<any> {
+    const slides = google.slides({ version: "v1", auth: this.auth });
+    
+    try {
+      // プレゼンテーションの情報を取得してスライドIDを取得
+      const presentation = await slides.presentations.get({
+        presentationId,
+      });
+
+      if (!presentation.data.slides || slideIndex >= presentation.data.slides.length) {
+        throw new Error(`スライドインデックス ${slideIndex} は範囲外です`);
+      }
+
+      const slideId = presentation.data.slides[slideIndex].objectId;
+      const textBoxObjectId = `textbox_${Date.now()}`;
+
+      // デフォルトの位置とサイズ
+      const defaultBounds = {
+        x: bounds?.x || 100,
+        y: bounds?.y || 100,
+        width: bounds?.width || 400,
+        height: bounds?.height || 100
+      };
+
+      const response = await slides.presentations.batchUpdate({
+        presentationId,
+        requestBody: {
+          requests: [
+            {
+              createShape: {
+                objectId: textBoxObjectId,
+                shapeType: "TEXT_BOX",
+                elementProperties: {
+                  pageObjectId: slideId,
+                  size: {
+                    width: {
+                      magnitude: defaultBounds.width,
+                      unit: "PT"
+                    },
+                    height: {
+                      magnitude: defaultBounds.height,
+                      unit: "PT"
+                    }
+                  },
+                  transform: {
+                    scaleX: 1,
+                    scaleY: 1,
+                    translateX: defaultBounds.x,
+                    translateY: defaultBounds.y,
+                    unit: "PT"
+                  }
+                }
+              }
+            },
+            {
+              insertText: {
+                objectId: textBoxObjectId,
+                text: text
+              }
+            }
+          ]
+        }
+      });
+
+      return {
+        status: 'success',
+        message: 'スライドにテキストを挿入しました',
+        presentationId,
+        slideIndex,
+        slideId,
+        textBoxObjectId,
+        text,
+        bounds: defaultBounds,
+        response: response.data
+      };
+    } catch (error) {
+      console.error("スライドへのテキスト挿入エラー:", error);
+      throw error;
+    }
+  }
 } 

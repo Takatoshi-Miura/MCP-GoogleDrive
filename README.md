@@ -128,7 +128,7 @@ npm run build
 - `g_drive_get_comments` - ファイルのコメントを全取得
 
 ### ファイル編集
-- `g_drive_insert_value` - ドキュメントやスプレッドシートに値を挿入（上書きではなく追加）
+- `g_drive_insert_value` - ドキュメント、スプレッドシート、スライドに値を挿入（上書きではなく追加）
 - `g_drive_create_chart` - 指定されたファイルにグラフを作成（棒グラフ、円グラフ、折れ線グラフ、散布図）
 - `g_drive_create_new_element` - 指定されたファイルに新規要素を作成
   - **ドキュメント**: API制限によりタブ作成不可（エラーメッセージを返します）
