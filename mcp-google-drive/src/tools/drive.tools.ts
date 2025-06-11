@@ -90,6 +90,52 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
     }
   );
 
+  // Google Driveファイル検索ツール（基本検索）
+  server.tool(
+    "g_drive_search_files",
+    "Google Drive内のファイルを検索する",
+    {
+      query: z.string().describe("検索クエリ")
+    },
+    async ({ query }) => {
+      try {
+        const auth = await getAuthClient();
+        const authError = checkAuthAndReturnError(auth);
+        if (authError) return authError;
+
+        const driveService = new DriveService(auth);
+        
+        // DriveService.searchFilesに直接検索クエリを渡す
+        const files = await driveService.searchFiles(query);
+
+        // ファイルリストをマークダウンリンク形式で作成
+        const fileList = files
+          ?.map((file: any) => {
+            const fileName = file.name || '名前なし';
+            const mimeType = file.mimeType || 'unknown';
+            const webViewLink = file.webViewLink;
+            
+            // webViewLinkがある場合はクリック可能なリンクにする
+            if (webViewLink) {
+              return `[${fileName}](${webViewLink}) (${mimeType})`;
+            } else {
+              return `${fileName} (${mimeType})`;
+            }
+          })
+          .join("\n");
+
+        return createSuccessResponse({
+          status: "success",
+          query: query,
+          totalCount: files?.length ?? 0,
+          results: `Found ${files?.length ?? 0} files:\n${fileList}`,
+        });
+      } catch (error: any) {
+        return createErrorResponse("ファイル検索に失敗しました", error);
+      }
+    }
+  );
+
   // 統合的なファイル内容読み取りツール
   server.tool(
     "g_drive_read_file",

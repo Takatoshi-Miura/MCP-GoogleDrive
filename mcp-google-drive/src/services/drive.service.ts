@@ -43,9 +43,12 @@ export class DriveService {
         "application/vnd.google-apps.presentation"   // Google Slides
       ];
       
+      // クエリをエスケープ
+      const escapedQuery = query.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+      
       // 検索クエリを構築（ファイル名とコンテンツの両方を検索対象とする）
       const mimeTypeQuery = mimeTypes.map(type => `mimeType='${type}'`).join(' or ');
-      const searchQuery = `(${mimeTypeQuery}) and (name contains '${query}' or fullText contains '${query}') and trashed=false`;
+      const searchQuery = `(${mimeTypeQuery}) and (name contains '${escapedQuery}' or fullText contains '${escapedQuery}') and trashed=false`;
       
       const params = {
         q: searchQuery,

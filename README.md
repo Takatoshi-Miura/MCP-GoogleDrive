@@ -119,6 +119,7 @@ npm run build
 
 ### ファイル管理・検索
 - `g_drive_list_files_by_type` - 指定したタイプのファイル一覧を取得
+- `g_drive_search_files` - Google Drive内のファイルを検索する
 - `g_drive_search_files_with_analysis` - ファイルを検索し、内容を分析して関連度順に並び替え
 
 ### ファイル閲覧
