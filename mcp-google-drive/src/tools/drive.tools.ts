@@ -53,43 +53,6 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
     }
   );
 
-  // Google Driveファイル検索（内容分析付き）ツール
-  server.tool(
-    "g_drive_search_files_with_analysis",
-    "Google Drive内のファイルを検索し、ファイルの内容を分析して関連度の高い順に並び替えて返します。各ファイルの要約と関連度スコアも含まれます。",
-    {
-      query: z.string().describe("検索クエリ（自然言語で入力可能。例：「プロジェクト計画について」「会議の議事録」「予算に関する資料」など）"),
-      maxResults: z.number().optional().describe("最大結果数（デフォルト: 10、最大: 20）")
-    },
-    async ({ query, maxResults = 10 }) => {
-      try {
-        const auth = await getAuthClient();
-        const authError = checkAuthAndReturnError(auth);
-        if (authError) return authError;
-
-        const driveService = new DriveService(auth);
-        const analysisResult = await driveService.searchFilesWithContentAnalysis(query, maxResults);
-
-        return createSuccessResponse({
-          status: "success",
-          query: analysisResult.query,
-          totalCount: analysisResult.totalCount,
-          results: analysisResult.results.map(file => ({
-            id: file.id,
-            name: `[${file.name}](${file.link})`,
-            link: file.link,
-            type: file.type,
-            modifiedTime: file.modifiedTime,
-            relevanceScore: file.relevanceScore,
-            summary: file.summary
-          }))
-        });
-      } catch (error: any) {
-        return createErrorResponse("内容分析付きファイル検索に失敗しました", error);
-      }
-    }
-  );
-
   // Google Driveファイル検索ツール（基本検索）
   server.tool(
     "g_drive_search_files",
