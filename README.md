@@ -85,15 +85,34 @@ npm run build
 4. 「認証情報を作成」>「OAuthクライアントID」を選択します。
    - アプリケーションの種類として「デスクトップアプリ」を選択
    - 任意の名前を入力し、「作成」をクリックします
+   - **重要**: 「認証済みのリダイレクトURI」に `http://localhost:8080` を追加してください
 
 5. 作成した認証情報の「JSONをダウンロード」をクリックしてJSONファイルをダウンロードします。
 
-### セットアップ方法
+### 認証設定
+
+#### 方法1: 自動認証（推奨）
+
+1. 認証用JSONファイルを `mcp-google-drive/credentials/client_secret.json` として格納します。
+
+2. 自動認証スクリプトを実行します：
+   ```bash
+   cd mcp-google-drive
+   npm run auto-auth
+   ```
+   
+   このコマンドを実行すると：
+   - OAuth設定が自動でチェックされます
+   - ブラウザが自動で開き、Google認証ページが表示されます
+   - 認証完了後、トークンが自動で保存されます
+   - 手動でコードをコピー＆ペーストする必要はありません
+
+#### 方法2: 手動認証（従来の方法）
 
 1. 認証用JSONファイルを `mcp-google-drive/credentials/client_secret.json` として格納します。
 
 2. client_secret.jsonをcredentialsディレクトリに配置後、以下のコマンドでトークンを生成:
-   ```
+   ```bash
    cd mcp-google-drive
    node build/generate-token.js
    ```
@@ -101,6 +120,20 @@ npm run build
    - 認証用URLをブラウザで開き、Google認証を行います
    - 認証後、リダイレクトされたURLからcode=の後ろの部分をコピーし、コンソールに貼り付けます
    - 「トークンが正常に保存されました」と表示されれば認証は成功です
+
+#### OAuth設定の確認
+
+OAuth設定に問題がある場合は、以下のコマンドで確認できます：
+
+```bash
+# OAuth設定をチェック
+npm run check-oauth
+
+# OAuth設定の詳細を表示
+npm run oauth-info
+```
+
+### 最終セットアップ
 
 3. Cursor SettingsのMCP Serversで「Add new global MCP server」を押下し、mcp.jsonに以下を追記
    ```json
@@ -111,7 +144,17 @@ npm run build
       ]
     }
    ```
-   以上
+
+## 利用可能なコマンド
+
+プロジェクトでは以下のnpmスクリプトが利用可能です：
+
+- `npm run build` - TypeScriptをコンパイル
+- `npm run start` - MCPサーバーを起動
+- `npm run auto-auth` - 自動認証を実行（推奨）
+- `npm run generate-token` - 手動認証を実行（従来の方法）
+- `npm run check-oauth` - OAuth設定をチェック
+- `npm run oauth-info` - OAuth設定の詳細を表示
 
 ## 利用可能なツール
 

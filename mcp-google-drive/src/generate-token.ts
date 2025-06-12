@@ -42,7 +42,7 @@ async function manualGenerateToken(): Promise<void> {
     }
     
     // 認証URLを生成
-    const redirectUri = "http://localhost:3000";
+    const redirectUri = "http://localhost:8080";
     const authUrl = getAuthUrl(oAuth2Client, redirectUri);
     
     console.log("以下のURLをブラウザで開いて認証してください:");
