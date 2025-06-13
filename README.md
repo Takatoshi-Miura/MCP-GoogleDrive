@@ -19,6 +19,7 @@ mcp-google-drive/
 ├── src/
 │   ├── config/              # 設定ファイル
 │   ├── services/            # ビジネスロジック層
+│   │   ├── auth.service.ts      # Google認証サービス
 │   │   ├── drive.service.ts     # Google Drive操作
 │   │   ├── sheets.service.ts    # Google Sheets操作
 │   │   ├── docs.service.ts      # Google Docs操作
@@ -30,8 +31,7 @@ mcp-google-drive/
 │   │   └── index.ts            # 共通型定義
 │   ├── utils/               # ユーティリティ関数
 │   │   └── json.ts             # JSON操作ユーティリティ
-│   ├── auth.ts              # Google認証処理
-│   ├── generate-token.ts    # 認証トークン生成
+│   ├── auth-cli.ts          # 認証用CLIスクリプト
 │   └── index.ts             # エントリーポイント
 ├── credentials/             # 認証情報
 ├── build/                   # ビルド結果
@@ -48,7 +48,25 @@ mcp-google-drive/
 - npm
 - Google Cloud Platformのプロジェクトとアクセス権限
 
-### インストール手順
+### Google APIの設定
+
+1. [Google Cloud Console](https://console.cloud.google.com/)にアクセスし、プロジェクトを作成または選択します。
+
+2. 左側のメニューから「APIとサービス」>「ライブラリ」を選択し、以下のAPIを有効にします：
+   - Google Drive API
+   - Google Sheets API
+   - Google Docs API
+   - Google Slides API
+
+3. 左側のメニューから「APIとサービス」>「認証情報」を選択します。
+
+4. 「認証情報を作成」>「OAuthクライアントID」を選択します。
+   - アプリケーションの種類として「デスクトップアプリ」を選択
+   - 任意の名前を入力し、「作成」をクリックします
+
+5. 作成した認証情報の「JSONをダウンロード」をクリックしてJSONファイルをダウンロードします。
+
+### セットアップ手順
 
 1. リポジトリをクローンする
 
@@ -70,72 +88,31 @@ npm install
 npm run build
 ```
 
-### Google APIの設定
+4. Google OAuth認証情報ファイルの配置
 
-1. [Google Cloud Console](https://console.cloud.google.com/)にアクセスし、プロジェクトを作成または選択します。
+Google Cloud Consoleからダウンロードした認証情報ファイルを `mcp-google-drive/credentials/client_secret.json` として格納します。
 
-2. 左側のメニューから「APIとサービス」>「ライブラリ」を選択し、以下のAPIを有効にします：
-   - Google Drive API
-   - Google Sheets API
-   - Google Docs API
-   - Google Slides API
-
-3. 左側のメニューから「APIとサービス」>「認証情報」を選択します。
-
-4. 「認証情報を作成」>「OAuthクライアントID」を選択します。
-   - アプリケーションの種類として「デスクトップアプリ」を選択
-   - 任意の名前を入力し、「作成」をクリックします
-   - **重要**: 「認証済みのリダイレクトURI」に `http://localhost:8080` を追加してください
-
-5. 作成した認証情報の「JSONをダウンロード」をクリックしてJSONファイルをダウンロードします。
-
-### 認証設定
-
-#### 方法1: 自動認証（推奨）
-
-1. 認証用JSONファイルを `mcp-google-drive/credentials/client_secret.json` として格納します。
-
-2. 自動認証スクリプトを実行します：
-   ```bash
-   cd mcp-google-drive
-   npm run auto-auth
-   ```
-   
-   このコマンドを実行すると：
-   - OAuth設定が自動でチェックされます
-   - ブラウザが自動で開き、Google認証ページが表示されます
-   - 認証完了後、トークンが自動で保存されます
-   - 手動でコードをコピー＆ペーストする必要はありません
-
-#### 方法2: 手動認証（従来の方法）
-
-1. 認証用JSONファイルを `mcp-google-drive/credentials/client_secret.json` として格納します。
-
-2. client_secret.jsonをcredentialsディレクトリに配置後、以下のコマンドでトークンを生成:
-   ```bash
-   cd mcp-google-drive
-   node build/generate-token.js
-   ```
-   - このコマンドを実行すると、認証URLが表示されます
-   - 認証用URLをブラウザで開き、Google認証を行います
-   - 認証後、リダイレクトされたURLからcode=の後ろの部分をコピーし、コンソールに貼り付けます
-   - 「トークンが正常に保存されました」と表示されれば認証は成功です
-
-#### OAuth設定の確認
-
-OAuth設定に問題がある場合は、以下のコマンドで確認できます：
+5. 自動認証の実行
 
 ```bash
-# OAuth設定をチェック
-npm run check-oauth
-
-# OAuth設定の詳細を表示
-npm run oauth-info
+npm run auto-auth
 ```
 
-### 最終セットアップ
+**自動認証プロセスの流れ**：
+1. **OAuth設定の確認**: 認証情報ファイルが正しく配置されているかチェック
+2. **既存トークンの処理**: 古いトークンファイルがある場合は自動削除
+3. **ブラウザ認証**: デフォルトブラウザが自動で開き、Google認証ページに移動
+4. **権限許可**: Googleアカウントにログインし、アプリケーションへのアクセス許可
+5. **トークン保存**: 認証完了後、トークンが `credentials/token.json` に自動保存
 
-3. Cursor SettingsのMCP Serversで「Add new global MCP server」を押下し、mcp.jsonに以下を追記
+**注意事項**：
+- ブラウザが自動で開かない場合は、コンソールに表示されるURLを手動でブラウザに貼り付けてください
+- 認証が完了すると、コンソールに「✅ 認証が正常に完了しました！」と表示されます
+
+6. mcp.jsonの設定
+
+Cursor SettingsのMCP Serversで「Add new global MCP server」を押下し、mcp.jsonに以下を追記
+
    ```json
    "mcp-google-drive": {
       "command": "node",
@@ -144,6 +121,8 @@ npm run oauth-info
       ]
     }
    ```
+以上
+
 
 ## 利用可能なコマンド
 
@@ -151,8 +130,7 @@ npm run oauth-info
 
 - `npm run build` - TypeScriptをコンパイル
 - `npm run start` - MCPサーバーを起動
-- `npm run auto-auth` - 自動認証を実行（推奨）
-- `npm run generate-token` - 手動認証を実行（従来の方法）
+- `npm run auto-auth` - 自動認証を実行
 - `npm run check-oauth` - OAuth設定をチェック
 - `npm run oauth-info` - OAuth設定の詳細を表示
 

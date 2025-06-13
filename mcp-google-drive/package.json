@@ -8,10 +8,9 @@
     "build": "tsc",
     "start": "node build/index.js",
     "dev": "ts-node src/index.ts",
-    "generate-token": "node build/generate-token.js",
-    "auto-auth": "node build/auto-auth.js",
-    "check-oauth": "node build/setup-oauth.js check",
-    "oauth-info": "node build/setup-oauth.js info",
+    "auto-auth": "node build/auth-cli.js auto-auth",
+    "check-oauth": "node build/auth-cli.js check",
+    "oauth-info": "node build/auth-cli.js info",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

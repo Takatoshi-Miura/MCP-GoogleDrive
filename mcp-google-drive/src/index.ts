@@ -3,24 +3,12 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import path from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
-import { authorize } from "./auth.js";
+import { authService } from "./services/auth.service.js";
 import { registerDriveTools } from "./tools/drive.tools.js";
 
 // ESM用にファイルパスを取得
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-// 認証情報ファイルのパスを設定
-const CREDENTIALS_PATH = process.env.CREDENTIALS_PATH || path.join(__dirname, "../credentials/client_secret.json");
-const TOKEN_PATH = process.env.TOKEN_PATH || path.join(__dirname, "../credentials/token.json");
-
-// Google APIのスコープ設定
-const SCOPES = [
-  "https://www.googleapis.com/auth/drive",
-  "https://www.googleapis.com/auth/spreadsheets",
-  "https://www.googleapis.com/auth/documents",
-  "https://www.googleapis.com/auth/presentations"
-];
 
 // MCPサーバーの作成
 const server = new McpServer({
@@ -34,7 +22,7 @@ const server = new McpServer({
 
 // Google認証用クライアントの取得
 async function getAuthClient() {
-  return authorize();
+  return authService.authorize();
 }
 
 // ツールの登録
