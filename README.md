@@ -7,10 +7,11 @@ HTTPベースのリアルタイム通信でGoogle Drive APIへのアクセスを
 
 - 📡 **SSE専用**: Server-Sent Events（SSE）によるHTTPベースのリアルタイム通信
 - 🌐 **リモートデプロイ対応**: Google Cloud Runなどのクラウド環境での運用が可能
-- 🔒 **多様な認証方式**: OIDC IDトークン認証（環境変数）、Service Account認証をサポート
+- 🔥 **Firebase認証対応**: Firebase AuthenticationによるセキュアなIDトークン認証（推奨）
+- 🔒 **多様な認証方式**: Firebase認証、OIDC IDトークン認証、Service Account認証をサポート
 - 🚀 **高性能**: 非同期処理による高速なAPI応答
 - 🛠️ **デバッグ容易**: 詳細なログ出力とエラーハンドリング
-- 🔧 **Headers不要**: 環境変数によるOIDC認証でMCPクライアントのheaders設定が不要
+- 📱 **モバイル対応**: CursorやモバイルアプリでのFirebase認証に最適化
 
 ## 機能
 
@@ -18,7 +19,7 @@ HTTPベースのリアルタイム通信でGoogle Drive APIへのアクセスを
 - Google Driveのファイル検索（ドキュメント、スプレッドシート、スライド対象）
 - Google Spreadsheets（スプレッドシート）の閲覧・編集
 - Google Docs（ドキュメント）の閲覧・編集
-- Google Slides（スライド）の閲覧
+- Google Slides（スライド）の閲覧・編集
 
 ## エンドポイント
 
@@ -64,25 +65,62 @@ mcp-google-drive/
 
 - Node.js 18以上
 - npm
+- Firebase プロジェクト（推奨）
 - Google Cloud Platformのプロジェクトとアクセス権限
 
-### Google APIの設定
+### 認証方式の選択
 
-1. [Google Cloud Console](https://console.cloud.google.com/)にアクセスし、プロジェクトを作成または選択します。
+このMCPサーバーは3つの認証方式をサポートしています：
 
-2. 左側のメニューから「APIとサービス」>「ライブラリ」を選択し、以下のAPIを有効にします：
+1. **🔥 Firebase認証（推奨）** - Cursorやモバイルアプリでの利用に最適
+2. **🔐 OAuth認証** - ローカル開発用の従来認証
+3. **🌐 OIDC認証** - Cloud Run環境用
+
+**推奨**: 本番環境での利用にはFirebase認証を使用してください。
+
+### Firebase認証の設定（推奨）
+
+#### 1. Firebase プロジェクトの作成
+
+1. [Firebase Console](https://console.firebase.google.com/)にアクセス
+2. 「プロジェクトを作成」または既存のプロジェクトを選択
+3. Authentication を有効化
+4. Sign-in method で使用したい認証方式を設定（Email/Password、Google、など）
+
+#### 2. Google Drive API の有効化
+
+1. [Google Cloud Console](https://console.cloud.google.com/)で同じプロジェクトを選択
+2. 「APIとサービス」>「ライブラリ」で以下のAPIを有効化：
    - Google Drive API
    - Google Sheets API
    - Google Docs API
    - Google Slides API
 
-3. 左側のメニューから「APIとサービス」>「認証情報」を選択します。
+#### 3. Firebase サービスアカウントキーの生成
 
-4. 「認証情報を作成」>「OAuthクライアントID」を選択します。
-   - アプリケーションの種類として「デスクトップアプリ」を選択
-   - 任意の名前を入力し、「作成」をクリックします
+1. Firebase Console > プロジェクトの設定 > サービス アカウント
+2. 「新しい秘密鍵の生成」をクリック
+3. JSONファイルをダウンロード
+4. `credentials/firebase-service-account.json` として保存
 
-5. 作成した認証情報の「JSONをダウンロード」をクリックしてJSONファイルをダウンロードします。
+#### 4. サービスアカウント権限の設定
+
+```bash
+# Firebase サービスアカウントにGoogle Drive API権限を付与
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:firebase-adminsdk-xxxxx@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/drive.file"
+```
+
+### 従来のGoogle OAuth設定（ローカル開発用）
+
+#### OAuth クライアントIDの作成
+
+1. [Google Cloud Console](https://console.cloud.google.com/)にアクセス
+2. 「APIとサービス」>「認証情報」を選択
+3. 「認証情報を作成」>「OAuthクライアントID」を選択
+4. アプリケーションの種類として「デスクトップアプリ」を選択
+5. 作成した認証情報のJSONをダウンロードし、`credentials/client_secret.json`として保存
 
 ### セットアップ手順
 
@@ -106,7 +144,27 @@ npm install
 npm run build
 ```
 
-4. Google OAuth認証情報ファイルの配置
+#### Firebase認証を使用する場合（推奨）
+
+4. Firebase設定の確認
+
+```bash
+npm run check-firebase
+```
+
+5. サービスアカウントファイルの配置
+
+Firebase ConsoleからダウンロードしたサービスアカウントJSONファイルを `mcp-google-drive/credentials/firebase-service-account.json` として配置します。
+
+6. サーバーの起動
+
+```bash
+npm run start
+```
+
+#### OAuth認証を使用する場合（ローカル開発）
+
+4. OAuth認証情報ファイルの配置
 
 Google Cloud Consoleからダウンロードした認証情報ファイルを `mcp-google-drive/credentials/client_secret.json` として格納します。
 
@@ -133,71 +191,31 @@ npm run auto-auth
 npm run start
 ```
 
-サーバーが起動すると、以下のような出力が表示されます：
-
-```
-🚀 MCP Google Drive Server (SSE専用) を起動中...
-✅ MCP Google Drive Server (SSE) が起動しました
-🌐 ポート: 8080
-🔧 環境: Local
-📡 SSEエンドポイント: http://localhost:8080/mcp
-💬 メッセージエンドポイント: http://localhost:8080/messages
-🏥 ヘルスチェック: http://localhost:8080/health
-```
-
 ## 認証方式
 
 このMCPサーバーは複数の認証方式をサポートしています：
 
-### 1. OIDC ID Token認証（推奨・Headers不要）
+### 1. Firebase認証（推奨）
 
-環境変数でOIDC ID Tokenを設定することで、MCPクライアントのheaders設定なしで認証できます。
+Firebase AuthenticationのIDトークンを使用したセキュアな認証方式です。
 
-#### 設定方法
+#### 特徴
+- 🔥 **セキュア**: Firebase Admin SDKによる厳密なトークン検証
+- 📱 **モバイル対応**: React Native、Flutter等のモバイルアプリに最適
+- 🌐 **スケーラブル**: Cloud Run等のクラウド環境での本番利用に適している
+- 👥 **ユーザー管理**: Firebase Consoleでユーザー管理が可能
+
+### 2. OIDC ID Token認証（Cloud Run環境用）
+
+環境変数でOIDC ID Tokenを設定する認証方式です。
 
 ```bash
 # 環境変数を設定
 export GOOGLE_OIDC_TOKEN="your-oidc-id-token"
-# または
-export MCP_GOOGLE_OIDC_TOKEN="your-oidc-id-token"
-
-# サーバー起動
 npm start
 ```
 
-#### OIDC ID Tokenの取得方法
-
-**Google Cloud SDK使用:**
-```bash
-gcloud auth print-identity-token
-```
-
-**Node.js使用:**
-```javascript
-const { GoogleAuth } = require('google-auth-library');
-const auth = new GoogleAuth();
-const client = await auth.getIdTokenClient('https://your-service-url');
-const token = await client.idTokenProvider.fetchIdToken('https://your-service-url');
-```
-
-**Python使用:**
-```python
-from google.auth.transport.requests import Request
-from google.oauth2 import id_token
-import google.auth
-
-credentials, project = google.auth.default()
-request = Request()
-token = id_token.fetch_id_token(request, 'https://your-service-url')
-```
-
-#### OIDC設定の確認
-
-```bash
-npm run check-oidc
-```
-
-### 2. OAuth2認証（ローカル開発用）
+### 3. OAuth2認証（ローカル開発用）
 
 従来のOAuth2フローを使用した認証方式です。
 
@@ -205,13 +223,94 @@ npm run check-oidc
 npm run auto-auth
 ```
 
-### 3. Service Account認証（Cloud Run用）
-
-Google Cloud Run環境では自動的にService Account認証が使用されます。
-
 ## MCPクライアントでの設定
 
-### ローカル実行の場合
+### Firebase認証を使用する場合（推奨）
+
+#### 🚀 Cursor用設定（推奨：クエリパラメータ認証）
+
+**最新の推奨方法**: クエリパラメータでFirebase IDトークンを送信
+
+```json
+{
+  "mcpServers": {
+    "mcp-google-drive": {
+      "url": "https://mcp-google-drive-firebase-1032995804784.asia-northeast1.run.app/mcp?token=YOUR_FIREBASE_ID_TOKEN"
+    }
+  }
+}
+```
+
+**特徴**:
+- ✅ **supergateway不要** - CursorがSSE形式MCPサーバーをネイティブサポート
+- ✅ **シンプル** - 複雑な変換プロセスが不要
+- ✅ **セキュア** - Firebase認証でアクセス制御
+- ✅ **高速** - 余分なプロキシ処理がないため高速
+
+#### Firebase IDトークン取得
+
+**Node.js/JavaScript用スクリプト**:
+```bash
+# mcp-google-driveディレクトリで実行
+cd mcp-google-drive
+node test-token.cjs
+```
+
+このスクリプトは以下を生成します：
+- 🔑 Firebase カスタムトークン
+- 📋 Cursor用設定JSON（ローカル開発・本番両方）
+- 📝 設定手順
+
+#### 従来のCursor設定（supergateway使用）
+
+**⚠️ 非推奨**: 複雑でパフォーマンスに影響があるため、上記のクエリパラメータ方式を推奨
+
+```json
+{
+  "mcpServers": {
+    "mcp-google-drive": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "supergateway",
+        "--sse",
+        "https://your-firebase-mcp-server.run.app/mcp",
+        "--header",
+        "Authorization:Bearer YOUR_FIREBASE_ID_TOKEN"
+      ]
+    }
+  }
+}
+```
+
+#### 他のMCPクライアント（VS Code等）
+
+**ヘッダー認証対応クライアント**:
+```json
+{
+  "mcpServers": {
+    "mcp-google-drive": {
+      "url": "https://your-firebase-mcp-server.run.app/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_FIREBASE_ID_TOKEN"
+      }
+    }
+  }
+}
+```
+
+**クエリパラメータ認証対応クライアント**:
+```json
+{
+  "mcpServers": {
+    "mcp-google-drive": {
+      "url": "https://your-firebase-mcp-server.run.app/mcp?token=YOUR_FIREBASE_ID_TOKEN"
+    }
+  }
+}
+```
+
+### ローカル開発の場合（OAuth認証）
 
 ```json
 {
@@ -223,96 +322,52 @@ Google Cloud Run環境では自動的にService Account認証が使用されま�
 }
 ```
 
-### Cursor用設定（推奨）
-
-**注意**: CursorはSSE形式のMCPサーバーでheadersをサポートしていないため、`supergateway`を使用してSSE→stdio変換を行います。
-
-   ```json
-{
-  "mcpServers": {
-   "mcp-google-drive": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "supergateway",
-        "--sse",
-        "https://mcp-google-drive-1032995804784.asia-northeast1.run.app/mcp",
-        "--header",
-        "Authorization:Bearer YOUR_ID_TOKEN"
-      ]
-    }
-  }
-}
-```
-
-#### トークンの更新
-
-IDトークンは約1時間で期限切れになるため、以下のスクリプトで更新してください：
-
-```bash
-# トークンを更新
-./update-supergateway-token.sh
-
-# 設定ファイルをCursorにインポート
-# 設定 > MCP Servers > Import from file > cursor-mcp-stdio-proxy.json
-```
-
-### 他のMCPクライアント（VS Code等）
-
-```json
-{
-  "mcpServers": {
-    "mcp-google-drive": {
-      "url": "https://mcp-google-drive-1032995804784.asia-northeast1.run.app/mcp",
-      "headers": {
-        "Authorization": "Bearer YOUR_ID_TOKEN"
-      }
-    }
-  }
-}
-```
+**注意**: ローカル開発では認証ミドルウェアが無効化され、OAuth認証が使用されます。
 
 ## リモートデプロイ
 
-### Google Cloud Runへのソースデプロイ（OIDC IDトークン認証）
+### Google Cloud Runへのデプロイ（Firebase認証）
 
-#### 1. デプロイ手順
+#### 1. Firebase プロジェクトとGoogle Cloud の統合
 
 ```bash
-# Google Cloud CLIがインストールされていることを確認
-gcloud version
-
-# プロジェクトを設定
-gcloud config set project YOUR_PROJECT_ID
-
-# ユーザーアカウントでログイン（API有効化のため）
-gcloud auth login
+# Firebase プロジェクトがGoogle Cloud プロジェクトと統合されていることを確認
+gcloud config set project YOUR_FIREBASE_PROJECT_ID
 
 # 必要なAPIを有効化
-gcloud services enable run.googleapis.com drive.googleapis.com sheets.googleapis.com docs.googleapis.com slides.googleapis.com
+gcloud services enable run.googleapis.com
+gcloud services enable drive.googleapis.com 
+gcloud services enable sheets.googleapis.com 
+gcloud services enable docs.googleapis.com 
+gcloud services enable slides.googleapis.com
+```
 
-# 認証付きでソースからデプロイ
-gcloud run deploy mcp-google-drive \
+#### 2. Firebase サービスアカウントの設定
+
+```bash
+# Firebase サービスアカウントにGoogle Drive APIアクセス権限を付与
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:firebase-adminsdk-xxxxx@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/drive.file"
+
+# サービスアカウントキーを環境変数として準備
+export FIREBASE_SERVICE_ACCOUNT='{"type":"service_account","project_id":"your-project",...}'
+```
+
+#### 3. Cloud Run デプロイメント
+
+```bash
+# Firebase サービスアカウント情報を環境変数として設定してデプロイ
+gcloud run deploy mcp-google-drive-firebase \
   --source . \
   --region asia-northeast1 \
   --platform managed \
   --no-allow-unauthenticated \
-  --set-env-vars MCP_TRANSPORT=http \
-  --port 8080
-
-# サービスアカウントを確認
-gcloud run services describe mcp-google-drive \
-   --region=asia-northeast1 \
-   --format="value(spec.template.spec.serviceAccountName)"
-
-# サービスアカウントに必要な権限を付与
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-   --member="serviceAccount:[上記で確認したサービスアカウント]" \
-   --role="roles/iam.serviceAccountTokenCreator"
-
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-   --member="serviceAccount:[上記で確認したサービスアカウント]" \
-   --role="roles/run.viewer"
+  --set-env-vars="MCP_TRANSPORT=http,FIREBASE_SERVICE_ACCOUNT=${FIREBASE_SERVICE_ACCOUNT}" \
+  --port 8080 \
+  --memory 1Gi \
+  --cpu 1 \
+  --max-instances 10
 ```
 
 #### 2. IDトークン取得手順
@@ -405,7 +460,9 @@ rm temp-key.json
 
 ### ビルド・認証
 - `npm run build` - TypeScriptをコンパイル
-- `npm run auto-auth` - 自動認証を実行
+- `npm run check-firebase` - Firebase認証設定をチェック（推奨）
+- `npm run generate-cursor-config` - Cursor用Firebase設定を生成（推奨）
+- `npm run auto-auth` - OAuth自動認証を実行（ローカル開発用）
 - `npm run check-oauth` - OAuth設定をチェック
 - `npm run oauth-info` - OAuth設定の詳細を表示
 
@@ -414,57 +471,110 @@ rm temp-key.json
 - `npm run dev` - 開発モード（SSE専用）
 
 ### 環境変数
+
+#### Firebase認証用
+- `FIREBASE_SERVICE_ACCOUNT` - Firebase サービスアカウントのJSON文字列
+- `FIREBASE_SERVICE_ACCOUNT_PATH` - Firebase サービスアカウントファイルのパス
+
+#### 共通設定
 - `PORT` - サーバーのポート番号（デフォルト: 8080）
 - `NODE_ENV` - 実行環境（production/development）
 
 ## トラブルシューティング
 
+### Firebase認証関連の問題
+
+1. **Firebase設定の確認**
+   ```bash
+   npm run check-firebase
+   ```
+
+2. **Firebase IDトークンの期限切れ**
+   - Firebase IDトークンは約1時間で期限切れになります
+   - クライアント側で`getIdToken(true)`を呼び出してトークンを強制更新
+
+3. **Firebase サービスアカウント権限エラー**
+   ```bash
+   # Firebase サービスアカウントにGoogle Drive API権限を付与
+   gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+     --member="serviceAccount:firebase-adminsdk-xxxxx@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+     --role="roles/drive.file"
+   ```
+
+4. **Firebase認証設定が見つからない場合**
+   - `credentials/firebase-service-account.json`ファイルが存在することを確認
+   - または`FIREBASE_SERVICE_ACCOUNT`環境変数が設定されていることを確認
+
 ### Cursorでツールが認識されない場合
 
-1. **supergateway方式を使用**（推奨）
+1. **クエリパラメータ認証を使用**（推奨）
    ```bash
-   ./update-supergateway-token.sh
+   # Firebase IDトークンを生成
+   cd mcp-google-drive
+   node test-token.cjs
    ```
-   生成された`cursor-mcp-stdio-proxy.json`をCursorにインポート
 
-2. **IDトークンの期限切れ**
-   - IDトークンは約1時間で期限切れになります
-   - `./update-supergateway-token.sh`を実行して更新
+   ```json
+   {
+     "mcpServers": {
+       "mcp-google-drive": {
+         "url": "https://mcp-google-drive-firebase-1032995804784.asia-northeast1.run.app/mcp?token=YOUR_FIREBASE_ID_TOKEN"
+       }
+     }
+   }
+   ```
 
-3. **npm/npxが見つからない場合**
-   - Node.jsがインストールされていることを確認
-   - `which npx`でパスを確認し、フルパスを設定に使用
+2. **従来のsupergateway方式**（⚠️ 非推奨）
+   ```json
+   {
+     "mcpServers": {
+       "mcp-google-drive": {
+         "command": "npx",
+         "args": [
+           "-y", "supergateway", "--sse",
+           "https://your-server.run.app/mcp",
+           "--header", "Authorization:Bearer YOUR_FIREBASE_ID_TOKEN"
+         ]
+       }
+     }
+   }
+   ```
+
+3. **Firebase IDトークンの手動取得**
+   ```javascript
+   // クライアント側でFirebase IDトークンを取得
+   import { getAuth } from 'firebase/auth';
+   const auth = getAuth();
+   const idToken = await auth.currentUser.getIdToken();
+   ```
 
 ### Cloud Runサーバーの問題
 
-1. **認証エラー（403 Forbidden）**
+1. **Firebase認証エラー（401 Unauthorized）**
    ```bash
-   # 認証状態を確認
-   gcloud auth list
-   
-   # 必要に応じて再認証
-   gcloud auth login
+   # Firebase IDトークンの確認
+   curl -H "Authorization: Bearer YOUR_FIREBASE_ID_TOKEN" \
+        https://your-server.run.app/health
    ```
 
-2. **サーバーの動作確認**
+2. **サービスアカウント設定エラー**
    ```bash
-   # ヘルスチェック
-   TOKEN=$(gcloud auth print-identity-token)
-   curl -H "Authorization: Bearer $TOKEN" \
-        https://mcp-google-drive-1032995804784.asia-northeast1.run.app/health
+   # Cloud Runサービスの環境変数確認
+   gcloud run services describe mcp-google-drive-firebase \
+     --region=asia-northeast1 \
+     --format="export"
    ```
 
 3. **デプロイの更新**
    ```bash
-   # 最新コードをデプロイ
-   gcloud run deploy mcp-google-drive \
+   # Firebase設定付きで再デプロイ
+   gcloud run deploy mcp-google-drive-firebase \
      --source . \
      --region=asia-northeast1 \
-     --platform=managed \
-     --port=8080
+     --set-env-vars="FIREBASE_SERVICE_ACCOUNT=${FIREBASE_SERVICE_ACCOUNT}"
    ```
 
-### Google Drive API認証
+### Google Drive API認証（ローカル開発）
 
 1. **OAuth認証の確認**
    ```bash

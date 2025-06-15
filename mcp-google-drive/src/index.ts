@@ -3,6 +3,7 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import express from "express";
 import cors from "cors";
 import { authService } from "./services/auth.service.js";
+import { firebaseService } from "./services/firebase.service.js";
 import { registerDriveTools } from "./tools/drive.tools.js";
 
 // HTTPサーバー用の変数
@@ -84,10 +85,13 @@ function setupHttpServer() {
     });
   });
 
-  // SSE エンドポイント (GET) - SSE接続を確立
-  app.get('/mcp', async (req, res) => {
+  // SSE エンドポイント (GET) - SSE接続を確立（Cloud Runのみ Firebase認証付き）
+  app.get('/mcp', isCloudRun ? firebaseService.authMiddleware() : (req, res, next) => next(), async (req, res) => {
     try {
-      console.log('🔗 新しいSSE接続を確立中...');
+      const user = (req as any).user;
+      const userInfo = firebaseService.isFirebaseEnabled() && user ? 
+        `${user.email} (${user.uid})` : 'Anonymous';
+      console.log(`🔗 SSE接続を確立中: ${userInfo}`);
       
       // SSEトランスポートの作成
       const transport = new SSEServerTransport('/messages', res);
@@ -97,12 +101,12 @@ function setupHttpServer() {
       
       // 接続が閉じられた時のクリーンアップ
       res.on('close', () => {
-        console.log(`🔌 SSE接続が閉じられました: ${transport.sessionId}`);
+        console.log(`🔌 SSE接続が閉じられました: ${transport.sessionId} (${userInfo})`);
         transports.delete(transport.sessionId);
       });
 
       res.on('error', (error) => {
-        console.error(`❌ SSE接続エラー: ${transport.sessionId}`, error);
+        console.error(`❌ SSE接続エラー: ${transport.sessionId} (${userInfo})`, error);
         transports.delete(transport.sessionId);
       });
       
@@ -110,7 +114,7 @@ function setupHttpServer() {
       const server = createMcpServer();
       await server.connect(transport);
       
-      console.log(`✅ SSE接続が確立されました: ${transport.sessionId}`);
+      console.log(`✅ SSE接続が確立されました: ${transport.sessionId} (${userInfo})`);
       
     } catch (error) {
       console.error('❌ SSE接続の確立に失敗:', error);
@@ -123,16 +127,19 @@ function setupHttpServer() {
     }
   });
 
-  // メッセージエンドポイント (POST) - クライアントからのメッセージを受信
-  app.post('/messages', async (req, res) => {
+  // メッセージエンドポイント (POST) - クライアントからのメッセージを受信（Cloud Runのみ Firebase認証付き）
+  app.post('/messages', isCloudRun ? firebaseService.authMiddleware() : (req, res, next) => next(), async (req, res) => {
     try {
-      console.log('📨 メッセージを受信:', JSON.stringify(req.body, null, 2));
+      const user = (req as any).user;
+      const userInfo = firebaseService.isFirebaseEnabled() && user ? 
+        `${user.email} (${user.uid})` : 'Anonymous';
+      console.log(`📨 メッセージを受信: ${userInfo}`, JSON.stringify(req.body, null, 2));
       
       // セッションIDの取得（クエリパラメータから）
       const sessionId = req.query.sessionId as string;
       
       if (!sessionId) {
-        console.error('❌ セッションIDが見つかりません');
+        console.error(`❌ セッションIDが見つかりません (${userInfo})`);
         return res.status(400).json({ 
           error: 'セッションIDが必要です',
           details: 'sessionIdをクエリパラメータで指定してください'
@@ -141,7 +148,7 @@ function setupHttpServer() {
       
       const transport = transports.get(sessionId);
       if (!transport) {
-        console.error(`❌ セッションが見つかりません: ${sessionId}`);
+        console.error(`❌ セッションが見つかりません: ${sessionId} (${userInfo})`);
         return res.status(404).json({ 
           error: 'セッションが見つかりません',
           sessionId: sessionId,

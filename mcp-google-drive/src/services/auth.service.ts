@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
+import { firebaseService } from "./firebase.service.js";
 
 // ESM用にファイルパスを取得
 const __filename = fileURLToPath(import.meta.url);
@@ -12,7 +13,7 @@ const __dirname = dirname(__filename);
 
 /**
  * Google認証サービスクラス
- * OAuth2認証、トークン管理、設定チェック機能を提供
+ * Firebase認証、OAuth2認証、トークン管理、設定チェック機能を提供
  */
 export class AuthService {
   private credentialsPath: string;
@@ -27,6 +28,29 @@ export class AuthService {
       "https://www.googleapis.com/auth/spreadsheets",
       "https://www.googleapis.com/auth/documents"
     ];
+  }
+
+  /**
+   * Firebase認証を通じてGoogle Drive APIアクセス用のOAuth2Clientを作成
+   * Firebase認証はリクエストレベルで行われるため、
+   * ここではサービスアカウントまたはApplication Default Credentialsを使用
+   */
+  private async getFirebaseServiceAuth(): Promise<OAuth2Client | null> {
+    try {
+      console.log('🔐 Firebase認証を通じたGoogle Drive API認証を試行中...');
+      
+      // Firebase認証が成功した場合は、サービスアカウント認証を使用
+      const auth = new google.auth.GoogleAuth({
+        scopes: this.scopes,
+      });
+      
+      const authClient = await auth.getClient();
+      console.log('✅ Firebase認証を通じたGoogle Drive API認証が成功しました');
+      return authClient as OAuth2Client;
+    } catch (error) {
+      console.warn('Firebase認証を通じたGoogle Drive API認証に失敗:', error.message);
+      return null;
+    }
   }
 
   /**
@@ -106,6 +130,13 @@ export class AuthService {
    */
   private isCloudRun(): boolean {
     return !!(process.env.K_SERVICE || process.env.K_REVISION || process.env.K_CONFIGURATION);
+  }
+
+  /**
+   * Firebase認証が有効かどうかを判定
+   */
+  private isFirebaseEnabled(): boolean {
+    return firebaseService.isFirebaseEnabled();
   }
 
   /**
@@ -285,16 +316,25 @@ npm start
   }
 
   /**
-   * 保存されたトークンからOAuth2クライアントを取得（Cloud Run対応）
+   * 保存されたトークンからOAuth2クライアントを取得（Firebase認証対応）
    */
   public async authorize(): Promise<OAuth2Client | null> {
-    // 1. OIDC ID Token認証を最優先で試行（環境変数から）
+    // 1. Firebase認証を最優先で試行（Cloud Run環境 / Firebase プロジェクト使用時）
+    if (this.isFirebaseEnabled()) {
+      console.log("Firebase認証モードを検出しました。サービスアカウント認証を試行します...");
+      const firebaseAuth = await this.getFirebaseServiceAuth();
+      if (firebaseAuth) {
+        return firebaseAuth;
+      }
+    }
+
+    // 2. OIDC ID Token認証を試行（環境変数から）
     const oidcAuth = await this.getOidcTokenAuth();
     if (oidcAuth) {
       return oidcAuth;
     }
 
-    // 2. Cloud Run環境の場合、Service Account認証を試行
+    // 3. Cloud Run環境の場合、Service Account認証を試行
     if (this.isCloudRun()) {
       console.log("Cloud Run環境を検出しました。Service Account認証を試行します...");
       
@@ -480,4 +520,5 @@ export const authenticateWithLocalAuth = () => authService.authenticateWithLocal
 export const authorize = () => authService.authorize();
 export const checkOAuthSetup = () => authService.checkOAuthSetup();
 export const checkOidcSetup = () => authService.checkOidcSetup();
-export const showOAuthInfo = () => authService.showOAuthInfo(); 
+export const showOAuthInfo = () => authService.showOAuthInfo();
+export const checkFirebaseSetup = () => firebaseService.checkFirebaseSetup(); 
