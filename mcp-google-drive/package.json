@@ -1,23 +1,20 @@
 {
   "name": "mcp-google-drive",
   "version": "1.0.0",
-  "description": "MCP server for Google Drive with hybrid stdio/HTTP streaming support",
+  "description": "MCP server for Google Drive with SSE transport",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "build": "tsc",
     "start": "node build/index.js",
-    "start:stdio": "node build/index.js",
-    "start:http": "MCP_TRANSPORT=http node build/index.js",
     "dev": "ts-node src/index.ts",
-    "dev:stdio": "ts-node src/index.ts",
-    "dev:http": "MCP_TRANSPORT=http ts-node src/index.ts",
     "auto-auth": "node build/auth-cli.js auto-auth",
     "check-oauth": "node build/auth-cli.js check",
+    "check-oidc": "node check-oidc-setup.js",
     "oauth-info": "node build/auth-cli.js info",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": ["mcp", "google-drive", "sse", "server-sent-events"],
   "author": "",
   "license": "ISC",
   "dependencies": {

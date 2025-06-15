@@ -1,15 +1,16 @@
 # MCP-GoogleDrive
 
-Model Context Protocol (MCP) を介してGoogle Driveにアクセスするための**ハイブリッドMCPサーバー**です。
-stdio（標準入出力）とHTTPストリーミング（SSE）の両方に対応し、用途に応じて選択できます。
+Model Context Protocol (MCP) を介してGoogle Driveにアクセスするための**SSE（Server-Sent Events）専用MCPサーバー**です。
+HTTPベースのリアルタイム通信でGoogle Drive APIへのアクセスを提供します。
 
 ## 特徴
 
-- 🔀 **ハイブリッド対応**: stdio版とHTTPストリーミング版を選択可能
-- 📱 **stdio版（デフォルト）**: 従来のMCPクライアント向け、高速で軽量
-- 🌐 **HTTPストリーミング版**: リモートデプロイ対応、デバッグ容易
-- 📡 **Server-Sent Events (SSE)**: HTTPベースのリアルタイム通信
-- 🌍 **リモートデプロイ対応**: クラウド環境での運用が可能
+- 📡 **SSE専用**: Server-Sent Events（SSE）によるHTTPベースのリアルタイム通信
+- 🌐 **リモートデプロイ対応**: Google Cloud Runなどのクラウド環境での運用が可能
+- 🔒 **多様な認証方式**: OIDC IDトークン認証（環境変数）、Service Account認証をサポート
+- 🚀 **高性能**: 非同期処理による高速なAPI応答
+- 🛠️ **デバッグ容易**: 詳細なログ出力とエラーハンドリング
+- 🔧 **Headers不要**: 環境変数によるOIDC認証でMCPクライアントのheaders設定が不要
 
 ## 機能
 
@@ -19,15 +20,14 @@ stdio（標準入出力）とHTTPストリーミング（SSE）の両方に対�
 - Google Docs（ドキュメント）の閲覧・編集
 - Google Slides（スライド）の閲覧
 
-## HTTPストリーミング版のエンドポイント
+## エンドポイント
 
-HTTPストリーミング版では、以下のエンドポイントを提供します：
+SSE専用MCPサーバーでは、以下のエンドポイントを提供します：
 
 - **`GET /`** - サーバー情報とエンドポイント一覧
 - **`GET /health`** - ヘルスチェック
 - **`GET /mcp`** - SSE接続の確立（Model Context Protocol通信用）
 - **`POST /messages?sessionId=<id>`** - MCPメッセージの送信
-
 
 ## ディレクトリ構造
 
@@ -57,7 +57,6 @@ mcp-google-drive/
 ├── package.json
 └── tsconfig.json
 ```
-
 
 ## セットアップ
 
@@ -130,105 +129,255 @@ npm run auto-auth
 
 6. サーバーの起動
 
-### stdio版での起動（デフォルト、推奨）
 ```bash
-npm run start:stdio
+npm run start
 ```
 
-### HTTPストリーミング版での起動
-```bash
-npm run start:http
-```
-
-HTTPストリーミング版が起動すると、以下のような出力が表示されます：
+サーバーが起動すると、以下のような出力が表示されます：
 
 ```
-🌐 HTTPストリーミングモードで起動中...
-✅ HTTPストリーミングサーバーが起動しました
-🌐 サーバーURL: http://localhost:8080
+🚀 MCP Google Drive Server (SSE専用) を起動中...
+✅ MCP Google Drive Server (SSE) が起動しました
+🌐 ポート: 8080
+🔧 環境: Local
 📡 SSEエンドポイント: http://localhost:8080/mcp
 💬 メッセージエンドポイント: http://localhost:8080/messages
 🏥 ヘルスチェック: http://localhost:8080/health
-📊 サーバー情報: http://localhost:8080/
 ```
+
+## 認証方式
+
+このMCPサーバーは複数の認証方式をサポートしています：
+
+### 1. OIDC ID Token認証（推奨・Headers不要）
+
+環境変数でOIDC ID Tokenを設定することで、MCPクライアントのheaders設定なしで認証できます。
+
+#### 設定方法
+
+```bash
+# 環境変数を設定
+export GOOGLE_OIDC_TOKEN="your-oidc-id-token"
+# または
+export MCP_GOOGLE_OIDC_TOKEN="your-oidc-id-token"
+
+# サーバー起動
+npm start
+```
+
+#### OIDC ID Tokenの取得方法
+
+**Google Cloud SDK使用:**
+```bash
+gcloud auth print-identity-token
+```
+
+**Node.js使用:**
+```javascript
+const { GoogleAuth } = require('google-auth-library');
+const auth = new GoogleAuth();
+const client = await auth.getIdTokenClient('https://your-service-url');
+const token = await client.idTokenProvider.fetchIdToken('https://your-service-url');
+```
+
+**Python使用:**
+```python
+from google.auth.transport.requests import Request
+from google.oauth2 import id_token
+import google.auth
+
+credentials, project = google.auth.default()
+request = Request()
+token = id_token.fetch_id_token(request, 'https://your-service-url')
+```
+
+#### OIDC設定の確認
+
+```bash
+npm run check-oidc
+```
+
+### 2. OAuth2認証（ローカル開発用）
+
+従来のOAuth2フローを使用した認証方式です。
+
+```bash
+npm run auto-auth
+```
+
+### 3. Service Account認証（Cloud Run用）
+
+Google Cloud Run環境では自動的にService Account認証が使用されます。
 
 ## MCPクライアントでの設定
 
-### stdio版を使用する場合（推奨・デフォルト）
+### ローカル実行の場合
 
 ```json
 {
   "mcpServers": {
     "mcp-google-drive": {
-      "command": "node",
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
+```
+
+### Cursor用設定（推奨）
+
+**注意**: CursorはSSE形式のMCPサーバーでheadersをサポートしていないため、`supergateway`を使用してSSE→stdio変換を行います。
+
+   ```json
+{
+  "mcpServers": {
+   "mcp-google-drive": {
+      "command": "npx",
       "args": [
-        "[実際のパスを設定する]/MCP-GoogleDrive/mcp-google-drive/build/index.js"
+        "-y",
+        "supergateway",
+        "--sse",
+        "https://mcp-google-drive-1032995804784.asia-northeast1.run.app/mcp",
+        "--header",
+        "Authorization:Bearer YOUR_ID_TOKEN"
       ]
     }
   }
 }
 ```
 
-### HTTPストリーミング版を使用する場合
+#### トークンの更新
+
+IDトークンは約1時間で期限切れになるため、以下のスクリプトで更新してください：
+
+```bash
+# トークンを更新
+./update-supergateway-token.sh
+
+# 設定ファイルをCursorにインポート
+# 設定 > MCP Servers > Import from file > cursor-mcp-stdio-proxy.json
+```
+
+### 他のMCPクライアント（VS Code等）
 
 ```json
 {
   "mcpServers": {
     "mcp-google-drive": {
-      "url": "http://localhost:8080/mcp",
-      "transport": "sse"
+      "url": "https://mcp-google-drive-1032995804784.asia-northeast1.run.app/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_ID_TOKEN"
+      }
     }
   }
 }
 ```
 
-### リモートMCPサーバーとしてデプロイする場合
+## リモートデプロイ
 
-#### Google Cloud Runへのソースデプロイ（推奨）
+### Google Cloud Runへのソースデプロイ（OIDC IDトークン認証）
+
+#### 1. デプロイ手順
 
 ```bash
-# 1. Google Cloud CLIがインストールされていることを確認
+# Google Cloud CLIがインストールされていることを確認
 gcloud version
 
-# 2. プロジェクトを設定
+# プロジェクトを設定
 gcloud config set project YOUR_PROJECT_ID
 
-# 3. Google Cloud Runにソースからデプロイ
+# ユーザーアカウントでログイン（API有効化のため）
+gcloud auth login
+
+# 必要なAPIを有効化
+gcloud services enable run.googleapis.com drive.googleapis.com sheets.googleapis.com docs.googleapis.com slides.googleapis.com
+
+# 認証付きでソースからデプロイ
 gcloud run deploy mcp-google-drive \
   --source . \
   --region asia-northeast1 \
   --platform managed \
-  --allow-unauthenticated \
+  --no-allow-unauthenticated \
   --set-env-vars MCP_TRANSPORT=http \
   --port 8080
 
-# 4. デプロイ完了後、URLが表示されます
-# 例: https://mcp-google-drive-xxx-an.a.run.app
-```
+# サービスアカウントを確認
+gcloud run services describe mcp-google-drive \
+   --region=asia-northeast1 \
+   --format="value(spec.template.spec.serviceAccountName)"
 
-**Google認証設定（重要）**:
-Cloud Run環境では、以下のいずれかの方法でGoogle認証を設定：
-
-**方法1: Service Account（推奨）**
-```bash
-# Service Accountに必要な権限を付与
+# サービスアカウントに必要な権限を付与
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-  --member="serviceAccount:YOUR_SERVICE_ACCOUNT@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
-  --role="roles/drive.file"
+   --member="serviceAccount:[上記で確認したサービスアカウント]" \
+   --role="roles/iam.serviceAccountTokenCreator"
+
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+   --member="serviceAccount:[上記で確認したサービスアカウント]" \
+   --role="roles/run.viewer"
 ```
 
-**方法2: 認証情報をSecret Managerで管理**
+#### 2. IDトークン取得手順
+
 ```bash
-# credentials/client_secret.jsonをSecret Managerに保存
-gcloud secrets create google-credentials --data-file=credentials/client_secret.json
+# サービスアカウントキーを作成（一時的に使用）
+gcloud iam service-accounts keys create temp-service-account-key.json \
+  --iam-account=[上記で確認したサービスアカウント]
 
-# Cloud Runサービスから利用可能にする
-gcloud run services update mcp-google-drive \
-  --update-secrets=GOOGLE_CREDENTIALS=/secrets/google-credentials:latest \
-  --region asia-northeast1
+# サービスアカウントでログイン
+gcloud auth activate-service-account --key-file=temp-service-account-key.json
+
+# IDトークンを取得
+gcloud auth print-identity-token --audiences=https://YOUR_CLOUD_RUN_URL
+
+# セキュリティのためキーファイルを削除
+rm temp-service-account-key.json
 ```
 
-#### その他のクラウド環境
+#### 3. MCPクライアント設定
+
+```json
+{
+  "mcpServers": {
+    "mcp-google-drive": {
+      "url": "https://YOUR_CLOUD_RUN_URL/mcp",
+      "transport": "sse",
+      "headers": {
+        "Authorization": "Bearer YOUR_ID_TOKEN"
+      }
+    }
+  }
+}
+```
+
+#### 4. トークン更新手順
+
+**IDトークンは約1時間で期限切れになります。**更新が必要な場合：
+
+```bash
+# 現在のサービスアカウントでIDトークンを再取得
+gcloud auth print-identity-token --audiences=https://YOUR_CLOUD_RUN_URL
+
+# または、サービスアカウントキーから再取得
+gcloud iam service-accounts keys create temp-key.json --iam-account=[サービスアカウント]
+gcloud auth activate-service-account --key-file=temp-key.json
+gcloud auth print-identity-token --audiences=https://YOUR_CLOUD_RUN_URL
+rm temp-key.json
+```
+
+**自動化スクリプト例**:
+```bash
+#!/bin/bash
+# token-refresh.sh
+SERVICE_ACCOUNT="[あなたのサービスアカウント]"
+AUDIENCE="https://[あなたのCloud Run URL]"
+
+gcloud iam service-accounts keys create temp-key.json --iam-account=$SERVICE_ACCOUNT
+gcloud auth activate-service-account --key-file=temp-key.json
+TOKEN=$(gcloud auth print-identity-token --audiences=$AUDIENCE)
+echo "New Token: $TOKEN"
+rm temp-key.json
+```
+
+### その他のクラウド環境
 
 **Heroku、Railway、Vercel等**:
 
@@ -250,7 +399,6 @@ gcloud run services update mcp-google-drive \
    }
    ```
 
-
 ## 利用可能なコマンド
 
 プロジェクトでは以下のnpmスクリプトが利用可能です：
@@ -262,24 +410,71 @@ gcloud run services update mcp-google-drive \
 - `npm run oauth-info` - OAuth設定の詳細を表示
 
 ### サーバー起動
-- `npm run start` - MCPサーバーを起動（stdio版、デフォルト）
-- `npm run start:stdio` - stdio版で起動
-- `npm run start:http` - HTTPストリーミング版で起動
+- `npm run start` - MCPサーバーを起動（SSE専用）
+- `npm run dev` - 開発モード（SSE専用）
 
-### 開発モード
-- `npm run dev` - 開発モード（stdio版、デフォルト）
-- `npm run dev:stdio` - 開発モード（stdio版）
-- `npm run dev:http` - 開発モード（HTTPストリーミング版）
+### 環境変数
+- `PORT` - サーバーのポート番号（デフォルト: 8080）
+- `NODE_ENV` - 実行環境（production/development）
 
-### モード切り替えの方法
-```bash
-# 環境変数での指定
-MCP_TRANSPORT=http npm run start
+## トラブルシューティング
 
-# コマンドライン引数での指定
-npm run start -- --http
-npm run start -- --http-mode
-```
+### Cursorでツールが認識されない場合
+
+1. **supergateway方式を使用**（推奨）
+   ```bash
+   ./update-supergateway-token.sh
+   ```
+   生成された`cursor-mcp-stdio-proxy.json`をCursorにインポート
+
+2. **IDトークンの期限切れ**
+   - IDトークンは約1時間で期限切れになります
+   - `./update-supergateway-token.sh`を実行して更新
+
+3. **npm/npxが見つからない場合**
+   - Node.jsがインストールされていることを確認
+   - `which npx`でパスを確認し、フルパスを設定に使用
+
+### Cloud Runサーバーの問題
+
+1. **認証エラー（403 Forbidden）**
+   ```bash
+   # 認証状態を確認
+   gcloud auth list
+   
+   # 必要に応じて再認証
+   gcloud auth login
+   ```
+
+2. **サーバーの動作確認**
+   ```bash
+   # ヘルスチェック
+   TOKEN=$(gcloud auth print-identity-token)
+   curl -H "Authorization: Bearer $TOKEN" \
+        https://mcp-google-drive-1032995804784.asia-northeast1.run.app/health
+   ```
+
+3. **デプロイの更新**
+   ```bash
+   # 最新コードをデプロイ
+   gcloud run deploy mcp-google-drive \
+     --source . \
+     --region=asia-northeast1 \
+     --platform=managed \
+     --port=8080
+   ```
+
+### Google Drive API認証
+
+1. **OAuth認証の確認**
+   ```bash
+   npm run check-oauth
+   ```
+
+2. **認証の再実行**
+   ```bash
+   npm run auto-auth
+   ```
 
 ## 利用可能なツール
 

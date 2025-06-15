@@ -30,6 +30,45 @@ export class AuthService {
   }
 
   /**
+   * 環境変数からOIDC ID Tokenを取得してOAuth2Clientを作成
+   */
+  private async getOidcTokenAuth(): Promise<OAuth2Client | null> {
+    try {
+      const oidcToken = process.env.GOOGLE_OIDC_TOKEN || process.env.MCP_GOOGLE_OIDC_TOKEN;
+      
+      if (!oidcToken) {
+        console.log('OIDC ID Token が環境変数に設定されていません');
+        return null;
+      }
+
+      console.log('🔐 OIDC ID Token を使用した認証を試行中...');
+      
+      // OIDC ID Tokenを使用してOAuth2Clientを作成
+      const auth = new google.auth.GoogleAuth({
+        scopes: this.scopes,
+      });
+      
+      // ID Tokenを設定
+      const authClient = await auth.getClient();
+      if (authClient instanceof OAuth2Client) {
+        // ID Tokenをaccess tokenとして設定（簡易的な方法）
+        authClient.setCredentials({
+          access_token: oidcToken,
+          token_type: 'Bearer'
+        });
+        
+        console.log('✅ OIDC ID Token認証が成功しました');
+        return authClient;
+      }
+      
+      return null;
+    } catch (error) {
+      console.warn('OIDC ID Token認証に失敗:', error.message);
+      return null;
+    }
+  }
+
+  /**
    * Cloud Run環境でのService Account認証
    */
   private async getServiceAccountAuth(): Promise<OAuth2Client | null> {
@@ -67,6 +106,67 @@ export class AuthService {
    */
   private isCloudRun(): boolean {
     return !!(process.env.K_SERVICE || process.env.K_REVISION || process.env.K_CONFIGURATION);
+  }
+
+  /**
+   * OIDC認証の設定状況を確認
+   */
+  public checkOidcSetup(): boolean {
+    const oidcToken = process.env.GOOGLE_OIDC_TOKEN || process.env.MCP_GOOGLE_OIDC_TOKEN;
+    
+    if (oidcToken) {
+      console.log("✅ OIDC ID Token が環境変数に設定されています");
+      return true;
+    } else {
+      console.log("ℹ️ OIDC ID Token が環境変数に設定されていません");
+      this.showOidcSetupInstructions();
+      return false;
+    }
+  }
+
+  /**
+   * OIDC認証のセットアップ手順を表示
+   */
+  private showOidcSetupInstructions(): void {
+    console.log(`
+🔐 OIDC ID Token認証セットアップガイド
+=====================================
+
+環境変数でOIDC ID Tokenを設定することで、headers設定なしで認証できます。
+
+## 環境変数の設定方法:
+
+1. 以下のいずれかの環境変数を設定:
+   export GOOGLE_OIDC_TOKEN="your-oidc-id-token"
+   または
+   export MCP_GOOGLE_OIDC_TOKEN="your-oidc-id-token"
+
+2. OIDC ID Tokenの取得方法:
+
+   ### Google Cloud SDK使用:
+   gcloud auth print-identity-token
+
+   ### Node.js使用:
+   const { GoogleAuth } = require('google-auth-library');
+   const auth = new GoogleAuth();
+   const client = await auth.getIdTokenClient('https://your-service-url');
+   const token = await client.idTokenProvider.fetchIdToken('https://your-service-url');
+
+   ### Python使用:
+   from google.auth.transport.requests import Request
+   from google.oauth2 import id_token
+   import google.auth
+   
+   credentials, project = google.auth.default()
+   request = Request()
+   token = id_token.fetch_id_token(request, 'https://your-service-url')
+
+## 使用例:
+export GOOGLE_OIDC_TOKEN="eyJhbGciOiJSUzI1NiIsImtpZCI6..."
+npm start
+
+これにより、MCPクライアントのheaders設定なしでGoogle Drive APIにアクセスできます。
+`);
   }
 
   /**
@@ -188,7 +288,13 @@ export class AuthService {
    * 保存されたトークンからOAuth2クライアントを取得（Cloud Run対応）
    */
   public async authorize(): Promise<OAuth2Client | null> {
-    // Cloud Run環境の場合、Service Account認証を優先
+    // 1. OIDC ID Token認証を最優先で試行（環境変数から）
+    const oidcAuth = await this.getOidcTokenAuth();
+    if (oidcAuth) {
+      return oidcAuth;
+    }
+
+    // 2. Cloud Run環境の場合、Service Account認証を試行
     if (this.isCloudRun()) {
       console.log("Cloud Run環境を検出しました。Service Account認証を試行します...");
       
@@ -373,4 +479,5 @@ export const createOAuth2Client = () => authService.createOAuth2Client();
 export const authenticateWithLocalAuth = () => authService.authenticateWithLocalAuth();
 export const authorize = () => authService.authorize();
 export const checkOAuthSetup = () => authService.checkOAuthSetup();
+export const checkOidcSetup = () => authService.checkOidcSetup();
 export const showOAuthInfo = () => authService.showOAuthInfo(); 
