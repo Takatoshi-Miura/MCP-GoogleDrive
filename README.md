@@ -1,6 +1,15 @@
 # MCP-GoogleDrive
 
-Model Context Protocol (MCP) を介してGoogle Driveにアクセスするためのサーバーです。
+Model Context Protocol (MCP) を介してGoogle Driveにアクセスするための**ハイブリッドMCPサーバー**です。
+stdio（標準入出力）とHTTPストリーミング（SSE）の両方に対応し、用途に応じて選択できます。
+
+## 特徴
+
+- 🔀 **ハイブリッド対応**: stdio版とHTTPストリーミング版を選択可能
+- 📱 **stdio版（デフォルト）**: 従来のMCPクライアント向け、高速で軽量
+- 🌐 **HTTPストリーミング版**: リモートデプロイ対応、デバッグ容易
+- 📡 **Server-Sent Events (SSE)**: HTTPベースのリアルタイム通信
+- 🌍 **リモートデプロイ対応**: クラウド環境での運用が可能
 
 ## 機能
 
@@ -9,6 +18,26 @@ Model Context Protocol (MCP) を介してGoogle Driveにアクセスするため
 - Google Spreadsheets（スプレッドシート）の閲覧・編集
 - Google Docs（ドキュメント）の閲覧・編集
 - Google Slides（スライド）の閲覧
+
+## HTTPストリーミング版のエンドポイント
+
+HTTPストリーミング版では、以下のエンドポイントを提供します：
+
+- **`GET /`** - サーバー情報とエンドポイント一覧
+- **`GET /health`** - ヘルスチェック
+- **`GET /mcp`** - SSE接続の確立（Model Context Protocol通信用）
+- **`POST /messages?sessionId=<id>`** - MCPメッセージの送信
+
+### HTTPサーバー起動例
+
+```bash
+npm run start:http
+```
+
+起動後、以下のURLでアクセス可能：
+- サーバー情報: http://localhost:3000/
+- ヘルスチェック: http://localhost:3000/health
+- MCPエンドポイント: http://localhost:3000/mcp
 
 ## ディレクトリ構造
 
@@ -109,30 +138,133 @@ npm run auto-auth
 - ブラウザが自動で開かない場合は、コンソールに表示されるURLを手動でブラウザに貼り付けてください
 - 認証が完了すると、コンソールに「✅ 認証が正常に完了しました！」と表示されます
 
-6. mcp.jsonの設定
+6. サーバーの起動
 
-Cursor SettingsのMCP Serversで「Add new global MCP server」を押下し、mcp.jsonに以下を追記
+### stdio版での起動（デフォルト、推奨）
+```bash
+npm run start:stdio
+```
 
-   ```json
-   "mcp-google-drive": {
+### HTTPストリーミング版での起動
+```bash
+npm run start:http
+```
+
+HTTPストリーミング版が起動すると、以下のような出力が表示されます：
+
+```
+🌐 HTTPストリーミングモードで起動中...
+✅ HTTPストリーミングサーバーが起動しました
+🌐 サーバーURL: http://localhost:3000
+📡 SSEエンドポイント: http://localhost:3000/mcp
+💬 メッセージエンドポイント: http://localhost:3000/messages
+🏥 ヘルスチェック: http://localhost:3000/health
+📊 サーバー情報: http://localhost:3000/
+```
+
+## MCPクライアントでの設定
+
+### stdio版を使用する場合（推奨・デフォルト）
+
+Cursor SettingsのMCP Serversで「Add new global MCP server」を押下し、mcp.jsonに以下を追記：
+
+```json
+{
+  "mcpServers": {
+    "mcp-google-drive": {
       "command": "node",
       "args": [
         "[実際のパスを設定する]/MCP-GoogleDrive/mcp-google-drive/build/index.js"
       ]
     }
+  }
+}
+```
+
+**設定手順：**
+1. プロジェクトをビルド: `npm run build`
+2. 上記のmcp.json設定を追加（パスは実際の場所に変更）
+3. MCPクライアント（Cursor等）を再起動
+
+### HTTPストリーミング版を使用する場合
+
+HTTPストリーミング版を使用する場合は、mcp.jsonに以下を追記：
+
+```json
+{
+  "mcpServers": {
+    "mcp-google-drive": {
+      "url": "http://localhost:3000/mcp",
+      "transport": "sse"
+    }
+  }
+}
+```
+
+**設定手順：**
+1. HTTPストリーミングサーバーを起動: `npm run start:http`
+2. サーバーが起動していることを確認: `curl http://localhost:3000/health`
+3. 上記のmcp.json設定を追加
+4. MCPクライアント（Cursor等）を再起動
+
+### リモートMCPサーバーとしてデプロイする場合
+
+クラウド環境（Heroku、Railway、Vercel等）にデプロイする場合：
+
+1. **環境変数の設定**:
+   ```bash
+   MCP_TRANSPORT=http
+   PORT=3000
    ```
-以上
+
+2. **デプロイ後のmcp.json設定**:
+   ```json
+   {
+     "mcpServers": {
+       "mcp-google-drive": {
+         "url": "https://your-deployed-app.herokuapp.com/mcp",
+         "transport": "sse"
+       }
+     }
+   }
+   ```
+
+3. **利点**:
+   - ✅ リモートサーバーでの運用
+   - ✅ 複数チームでの共有利用
+   - ✅ サーバー管理の集約化
+   - ✅ スケーラビリティ
 
 
 ## 利用可能なコマンド
 
 プロジェクトでは以下のnpmスクリプトが利用可能です：
 
+### ビルド・認証
 - `npm run build` - TypeScriptをコンパイル
-- `npm run start` - MCPサーバーを起動
 - `npm run auto-auth` - 自動認証を実行
 - `npm run check-oauth` - OAuth設定をチェック
 - `npm run oauth-info` - OAuth設定の詳細を表示
+
+### サーバー起動
+- `npm run start` - MCPサーバーを起動（stdio版、デフォルト）
+- `npm run start:stdio` - stdio版で起動
+- `npm run start:http` - HTTPストリーミング版で起動
+
+### 開発モード
+- `npm run dev` - 開発モード（stdio版、デフォルト）
+- `npm run dev:stdio` - 開発モード（stdio版）
+- `npm run dev:http` - 開発モード（HTTPストリーミング版）
+
+### モード切り替えの方法
+```bash
+# 環境変数での指定
+MCP_TRANSPORT=http npm run start
+
+# コマンドライン引数での指定
+npm run start -- --http
+npm run start -- --http-mode
+```
 
 ## 利用可能なツール
 
