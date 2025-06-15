@@ -13,10 +13,12 @@ import { registerDriveTools } from "./tools/drive.tools.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// 実行モードの判定
+// 実行モードの判定（Cloud Run対応）
+const isCloudRun = process.env.K_SERVICE || process.env.K_REVISION || process.env.K_CONFIGURATION;
 const isHttpMode = process.env.MCP_TRANSPORT === 'http' || 
                   process.argv.includes('--http') || 
-                  process.argv.includes('--http-mode');
+                  process.argv.includes('--http-mode') ||
+                  isCloudRun; // Cloud Run環境では自動的にHTTPモード
 
 // HTTPモード用の変数
 let app: express.Application;
@@ -33,9 +35,15 @@ function createMcpServer() {
     },
   });
 
-  // Google認証用クライアントの取得
+  // Google認証用クライアントの取得（エラー処理付き）
   async function getAuthClient() {
-    return authService.authorize();
+    try {
+      return await authService.authorize();
+    } catch (error) {
+      console.warn('Google認証の取得に失敗しました:', error.message);
+      console.warn('認証が必要な操作は制限されます');
+      return null;
+    }
   }
 
   // ツールの登録
@@ -51,6 +59,37 @@ function setupHttpServer() {
   // ミドルウェアの設定
   app.use(cors());
   app.use(express.json());
+
+  // Cloud Run用のヘルスチェックエンドポイント（優先度を上げる）
+  app.get('/health', (req, res) => {
+    res.status(200).json({ 
+      status: 'healthy', 
+      server: 'mcp-google-drive',
+      version: '1.0.0',
+      transport: 'HTTP-SSE',
+      environment: isCloudRun ? 'Cloud Run' : 'Local',
+      activeSessions: transports.size,
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  // Cloud Run用のルートヘルスチェック
+  app.get('/', (req, res) => {
+    res.status(200).json({
+      name: 'MCP Google Drive Server',
+      version: '1.0.0', 
+      transport: 'HTTP Server-Sent Events (SSE)',
+      environment: isCloudRun ? 'Google Cloud Run' : 'Local',
+      endpoints: {
+        sse: 'GET /mcp - SSE接続を確立',
+        messages: 'POST /messages?sessionId=<id> - メッセージを送信',
+        health: 'GET /health - ヘルスチェック'
+      },
+      description: 'Google Drive API へのアクセスを提供するMCPサーバー',
+      activeSessions: transports.size,
+      timestamp: new Date().toISOString()
+    });
+  });
 
   // SSE エンドポイント (GET) - SSE接続を確立
   app.get('/mcp', async (req, res) => {
@@ -106,53 +145,32 @@ function setupHttpServer() {
       }
     }
   });
-
-  // ヘルスチェックエンドポイント
-  app.get('/health', (req, res) => {
-    res.json({ 
-      status: 'healthy', 
-      server: 'mcp-google-drive',
-      version: '1.0.0',
-      transport: 'HTTP-SSE',
-      activeSessions: transports.size
-    });
-  });
-
-  // ルートエンドポイント - サーバー情報を表示
-  app.get('/', (req, res) => {
-    res.json({
-      name: 'MCP Google Drive Server',
-      version: '1.0.0', 
-      transport: 'HTTP Server-Sent Events (SSE)',
-      endpoints: {
-        sse: 'GET /mcp - SSE接続を確立',
-        messages: 'POST /messages?sessionId=<id> - メッセージを送信',
-        health: 'GET /health - ヘルスチェック'
-      },
-      description: 'Google Drive API へのアクセスを提供するMCPサーバー',
-      activeSessions: transports.size
-    });
-  });
 }
 
 // HTTPサーバーの起動
 async function startHttpServer() {
-  const PORT = process.env.PORT || 3000;
+  const PORT = parseInt(process.env.PORT || '8080', 10); // Cloud Run用にデフォルトを8080に変更
   
   setupHttpServer();
   
   return new Promise<void>((resolve, reject) => {
-    const server = app.listen(PORT, () => {
+    const server = app.listen(PORT, '0.0.0.0', () => { // Cloud Run用に0.0.0.0をバインド
       console.log(`✅ HTTPストリーミングサーバーが起動しました`);
-      console.log(`🌐 サーバーURL: http://localhost:${PORT}`);
-      console.log(`📡 SSEエンドポイント: http://localhost:${PORT}/mcp`);
-      console.log(`💬 メッセージエンドポイント: http://localhost:${PORT}/messages`);
-      console.log(`🏥 ヘルスチェック: http://localhost:${PORT}/health`);
-      console.log(`📊 サーバー情報: http://localhost:${PORT}/`);
+      console.log(`🌐 ポート: ${PORT}`);
+      console.log(`🔧 環境: ${isCloudRun ? 'Google Cloud Run' : 'Local'}`);
+      if (!isCloudRun) {
+        console.log(`📡 SSEエンドポイント: http://localhost:${PORT}/mcp`);
+        console.log(`💬 メッセージエンドポイント: http://localhost:${PORT}/messages`);
+        console.log(`🏥 ヘルスチェック: http://localhost:${PORT}/health`);
+        console.log(`📊 サーバー情報: http://localhost:${PORT}/`);
+      }
       resolve();
     });
     
-    server.on('error', reject);
+    server.on('error', (error) => {
+      console.error('サーバー起動エラー:', error);
+      reject(error);
+    });
   });
 }
 
@@ -194,6 +212,11 @@ function setupShutdownHandlers() {
 // メイン関数
 async function main() {
   try {
+    // 環境情報をログ出力
+    console.log(`🚀 起動環境: ${isCloudRun ? 'Google Cloud Run' : 'Local'}`);
+    console.log(`🔧 HTTPモード: ${isHttpMode ? 'ON' : 'OFF'}`);
+    console.log(`📡 ポート: ${process.env.PORT || (isHttpMode ? '8080' : 'N/A')}`);
+    
     // シャットダウンハンドラーの設定
     setupShutdownHandlers();
     

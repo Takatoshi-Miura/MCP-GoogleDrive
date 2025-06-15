@@ -30,6 +30,46 @@ export class AuthService {
   }
 
   /**
+   * Cloud Run環境でのService Account認証
+   */
+  private async getServiceAccountAuth(): Promise<OAuth2Client | null> {
+    try {
+      // Cloud Run環境でのサービスアカウント認証
+      const auth = new google.auth.GoogleAuth({
+        scopes: this.scopes,
+      });
+      
+      const authClient = await auth.getClient();
+      return authClient as OAuth2Client;
+    } catch (error) {
+      console.warn('Service Account認証に失敗:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Secret Managerから認証情報を取得
+   */
+  private async getCredentialsFromSecret(): Promise<any> {
+    try {
+      const secretValue = process.env.GOOGLE_CREDENTIALS;
+      if (!secretValue) return null;
+      
+      return JSON.parse(secretValue);
+    } catch (error) {
+      console.warn('Secret Manager認証情報の取得に失敗:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Cloud Run環境かどうかを判定
+   */
+  private isCloudRun(): boolean {
+    return !!(process.env.K_SERVICE || process.env.K_REVISION || process.env.K_CONFIGURATION);
+  }
+
+  /**
    * OAuth設定をチェックし、必要に応じてガイドを表示する
    */
   public checkOAuthSetup(): boolean {
@@ -145,9 +185,36 @@ export class AuthService {
   }
 
   /**
-   * 保存されたトークンからOAuth2クライアントを取得
+   * 保存されたトークンからOAuth2クライアントを取得（Cloud Run対応）
    */
   public async authorize(): Promise<OAuth2Client | null> {
+    // Cloud Run環境の場合、Service Account認証を優先
+    if (this.isCloudRun()) {
+      console.log("Cloud Run環境を検出しました。Service Account認証を試行します...");
+      
+      const serviceAccountAuth = await this.getServiceAccountAuth();
+      if (serviceAccountAuth) {
+        console.log("✅ Service Account認証が成功しました");
+        return serviceAccountAuth;
+      }
+      
+      // Service Account認証が失敗した場合、Secret Manager認証を試行
+      const secretCredentials = await this.getCredentialsFromSecret();
+      if (secretCredentials) {
+        console.log("Secret Manager認証情報を使用します...");
+        const { client_secret, client_id, redirect_uris } = secretCredentials.installed || secretCredentials.web;
+        const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+        
+        // Cloud Run環境では通常、事前に認証されたトークンを使用
+        console.warn("⚠️ Cloud Run環境でOAuth認証が必要です。Service Accountの使用を推奨します。");
+        return oAuth2Client;
+      }
+      
+      console.warn("⚠️ Cloud Run環境での認証設定が見つかりません。機能が制限されます。");
+      return null;
+    }
+    
+    // ローカル環境での通常のOAuth認証フロー
     const oAuth2Client = this.createOAuth2Client();
     if (!oAuth2Client) return null;
     

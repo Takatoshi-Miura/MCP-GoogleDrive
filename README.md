@@ -28,16 +28,6 @@ HTTPストリーミング版では、以下のエンドポイントを提供し�
 - **`GET /mcp`** - SSE接続の確立（Model Context Protocol通信用）
 - **`POST /messages?sessionId=<id>`** - MCPメッセージの送信
 
-### HTTPサーバー起動例
-
-```bash
-npm run start:http
-```
-
-起動後、以下のURLでアクセス可能：
-- サーバー情報: http://localhost:3000/
-- ヘルスチェック: http://localhost:3000/health
-- MCPエンドポイント: http://localhost:3000/mcp
 
 ## ディレクトリ構造
 
@@ -155,18 +145,16 @@ HTTPストリーミング版が起動すると、以下のような出力が表�
 ```
 🌐 HTTPストリーミングモードで起動中...
 ✅ HTTPストリーミングサーバーが起動しました
-🌐 サーバーURL: http://localhost:3000
-📡 SSEエンドポイント: http://localhost:3000/mcp
-💬 メッセージエンドポイント: http://localhost:3000/messages
-🏥 ヘルスチェック: http://localhost:3000/health
-📊 サーバー情報: http://localhost:3000/
+🌐 サーバーURL: http://localhost:8080
+📡 SSEエンドポイント: http://localhost:8080/mcp
+💬 メッセージエンドポイント: http://localhost:8080/messages
+🏥 ヘルスチェック: http://localhost:8080/health
+📊 サーバー情報: http://localhost:8080/
 ```
 
 ## MCPクライアントでの設定
 
 ### stdio版を使用する場合（推奨・デフォルト）
-
-Cursor SettingsのMCP Serversで「Add new global MCP server」を押下し、mcp.jsonに以下を追記：
 
 ```json
 {
@@ -181,40 +169,73 @@ Cursor SettingsのMCP Serversで「Add new global MCP server」を押下し、mc
 }
 ```
 
-**設定手順：**
-1. プロジェクトをビルド: `npm run build`
-2. 上記のmcp.json設定を追加（パスは実際の場所に変更）
-3. MCPクライアント（Cursor等）を再起動
-
 ### HTTPストリーミング版を使用する場合
-
-HTTPストリーミング版を使用する場合は、mcp.jsonに以下を追記：
 
 ```json
 {
   "mcpServers": {
     "mcp-google-drive": {
-      "url": "http://localhost:3000/mcp",
+      "url": "http://localhost:8080/mcp",
       "transport": "sse"
     }
   }
 }
 ```
 
-**設定手順：**
-1. HTTPストリーミングサーバーを起動: `npm run start:http`
-2. サーバーが起動していることを確認: `curl http://localhost:3000/health`
-3. 上記のmcp.json設定を追加
-4. MCPクライアント（Cursor等）を再起動
-
 ### リモートMCPサーバーとしてデプロイする場合
 
-クラウド環境（Heroku、Railway、Vercel等）にデプロイする場合：
+#### Google Cloud Runへのソースデプロイ（推奨）
+
+```bash
+# 1. Google Cloud CLIがインストールされていることを確認
+gcloud version
+
+# 2. プロジェクトを設定
+gcloud config set project YOUR_PROJECT_ID
+
+# 3. Google Cloud Runにソースからデプロイ
+gcloud run deploy mcp-google-drive \
+  --source . \
+  --region asia-northeast1 \
+  --platform managed \
+  --allow-unauthenticated \
+  --set-env-vars MCP_TRANSPORT=http \
+  --port 8080
+
+# 4. デプロイ完了後、URLが表示されます
+# 例: https://mcp-google-drive-xxx-an.a.run.app
+```
+
+**Google認証設定（重要）**:
+Cloud Run環境では、以下のいずれかの方法でGoogle認証を設定：
+
+**方法1: Service Account（推奨）**
+```bash
+# Service Accountに必要な権限を付与
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:YOUR_SERVICE_ACCOUNT@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/drive.file"
+```
+
+**方法2: 認証情報をSecret Managerで管理**
+```bash
+# credentials/client_secret.jsonをSecret Managerに保存
+gcloud secrets create google-credentials --data-file=credentials/client_secret.json
+
+# Cloud Runサービスから利用可能にする
+gcloud run services update mcp-google-drive \
+  --update-secrets=GOOGLE_CREDENTIALS=/secrets/google-credentials:latest \
+  --region asia-northeast1
+```
+
+#### その他のクラウド環境
+
+**Heroku、Railway、Vercel等**:
 
 1. **環境変数の設定**:
    ```bash
    MCP_TRANSPORT=http
-   PORT=3000
+   PORT=8080  # または各プラットフォーム指定のポート
    ```
 
 2. **デプロイ後のmcp.json設定**:
@@ -222,18 +243,12 @@ HTTPストリーミング版を使用する場合は、mcp.jsonに以下を追�
    {
      "mcpServers": {
        "mcp-google-drive": {
-         "url": "https://your-deployed-app.herokuapp.com/mcp",
+         "url": "https://your-deployed-app.run.app/mcp",
          "transport": "sse"
        }
      }
    }
    ```
-
-3. **利点**:
-   - ✅ リモートサーバーでの運用
-   - ✅ 複数チームでの共有利用
-   - ✅ サーバー管理の集約化
-   - ✅ スケーラビリティ
 
 
 ## 利用可能なコマンド
