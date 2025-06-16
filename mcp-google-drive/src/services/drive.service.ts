@@ -11,6 +11,10 @@ export class DriveService {
 
   // Googleドライブのファイル一覧を取得する関数
   async listFiles(query?: string): Promise<FileInfo[]> {
+    console.log('🔍 DriveService.listFiles 開始');
+    console.log('認証クライアント:', this.auth.constructor.name);
+    console.log('検索クエリ:', query || '(すべてのファイル)');
+    
     const drive = google.drive({ version: "v3", auth: this.auth });
     
     try {
@@ -21,12 +25,37 @@ export class DriveService {
       
       if (query) {
         params.q = query;
+      } else {
+        // 削除されたファイルを除外
+        params.q = 'trashed=false';
       }
       
+      console.log('📋 API パラメータ:', JSON.stringify(params, null, 2));
+      
       const response = await drive.files.list(params);
-      return response.data.files || [];
+      const files = response.data.files || [];
+      
+      console.log('✅ Google Drive API 呼び出し成功');
+      console.log('📁 取得されたファイル数:', files.length);
+      
+      if (files.length > 0) {
+        console.log('📄 ファイル一覧:');
+        files.slice(0, 3).forEach((file, index) => {
+          console.log(`  ${index + 1}. ${file.name} (${file.mimeType})`);
+        });
+        if (files.length > 3) {
+          console.log(`  ... 他${files.length - 3}件`);
+        }
+      }
+      
+      return files;
     } catch (error) {
-      console.error("Googleドライブのファイル一覧取得エラー:", error);
+      console.error("❌ Googleドライブのファイル一覧取得エラー:", error);
+      console.error("エラーの詳細:", {
+        message: error.message,
+        code: error.code,
+        status: error.status
+      });
       throw error;
     }
   }

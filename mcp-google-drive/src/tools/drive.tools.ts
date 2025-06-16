@@ -28,9 +28,17 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
     },
     async ({ fileType, maxResults = 50, customQuery }) => {
       try {
+        console.log('🔍 [g_drive_list_files_by_type] ツール実行開始');
+        console.log('🔍 [g_drive_list_files_by_type] パラメータ:', { fileType, maxResults, customQuery });
+        
         const auth = await getAuthClient();
+        console.log('🔍 [g_drive_list_files_by_type] getAuthClient結果:', auth ? `取得成功 (${auth.constructor.name})` : 'null');
+        
         const authError = checkAuthAndReturnError(auth);
-        if (authError) return authError;
+        if (authError) {
+          console.log('❌ [g_drive_list_files_by_type] 認証エラーでリターン');
+          return authError;
+        }
 
         const driveService = new DriveService(auth);
         const { files, responseKey } = await driveService.listFilesByType(fileType as FileType, maxResults, customQuery);

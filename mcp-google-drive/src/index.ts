@@ -1,42 +1,68 @@
+import express from 'express';
+import cors from 'cors';
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import express from "express";
-import cors from "cors";
-import { authService } from "./services/auth.service.js";
-import { firebaseService } from "./services/firebase.service.js";
 import { registerDriveTools } from "./tools/drive.tools.js";
+import { oidcAuthService } from "./services/oidc-auth.service.js";
+import { GoogleAuth } from "google-auth-library";
+import { OAuth2Client } from "google-auth-library";
 
-// HTTPサーバー用の変数
+// Express アプリケーション
 let app: express.Application;
-const transports: Map<string, SSEServerTransport> = new Map();
 
-// Cloud Run環境の検出
-const isCloudRun = process.env.K_SERVICE || process.env.K_REVISION || process.env.K_CONFIGURATION;
+// SSEトランスポートの管理
+const transports: Map<string, SSEServerTransport> = new Map();
 
 // MCPサーバーの作成
 function createMcpServer() {
-const server = new McpServer({
-  name: "mcp-google-drive",
-  version: "1.0.0",
-  capabilities: {
-    resources: {},
-    tools: {},
-  },
-});
+  const server = new McpServer({
+    name: "mcp-google-drive",
+    version: "1.0.0",
+    capabilities: {
+      resources: {},
+      tools: {},
+    },
+  });
 
-  // Google認証用クライアントの取得（エラー処理付き）
-async function getAuthClient() {
+  // 認証クライアントを取得する関数
+  async function getAuthClient(req?: express.Request) {
     try {
-      return await authService.authorize();
+      // Cloud Run環境では常にサービスアカウント認証を使用
+      if (oidcAuthService.isCloudRun()) {
+        // Application Default Credentials (ADC) を使用してサービスアカウント認証
+        const auth = new GoogleAuth({
+          scopes: [
+            "https://www.googleapis.com/auth/drive",
+            "https://www.googleapis.com/auth/spreadsheets", 
+            "https://www.googleapis.com/auth/documents"
+          ]
+        });
+        
+        const authClient = await auth.getClient() as OAuth2Client;
+        console.log('✅ Cloud Run サービスアカウント認証が成功しました');
+        return authClient;
+      } else {
+        // ローカル環境では ADC またはサービスアカウントキーを使用
+        const auth = new GoogleAuth({
+          scopes: [
+            "https://www.googleapis.com/auth/drive",
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/documents"
+          ]
+        });
+        
+        const authClient = await auth.getClient() as OAuth2Client;
+        console.log('✅ ローカル認証が成功しました');
+        return authClient;
+      }
     } catch (error) {
-      console.warn('Google認証の取得に失敗しました:', error.message);
-      console.warn('認証が必要な操作は制限されます');
+      console.error('❌ Google API認証に失敗:', error);
       return null;
     }
-}
+  }
 
-// ツールの登録
-registerDriveTools(server, getAuthClient);
+  // ツールの登録
+  registerDriveTools(server, getAuthClient);
   
   return server;
 }
@@ -61,7 +87,8 @@ function setupHttpServer() {
       server: 'mcp-google-drive',
       version: '1.0.0',
       transport: 'SSE',
-      environment: isCloudRun ? 'Cloud Run' : 'Local',
+      environment: oidcAuthService.isCloudRun() ? 'Cloud Run' : 'Local',
+      authentication: 'OIDC ID Token (Query Parameter)',
       activeSessions: transports.size,
       timestamp: new Date().toISOString()
     });
@@ -73,25 +100,36 @@ function setupHttpServer() {
       name: 'MCP Google Drive Server',
       version: '1.0.0', 
       transport: 'Server-Sent Events (SSE)',
-      environment: isCloudRun ? 'Google Cloud Run' : 'Local',
+      environment: oidcAuthService.isCloudRun() ? 'Google Cloud Run' : 'Local',
+      authentication: 'OIDC ID Token (Query Parameter Only)',
       endpoints: {
-        sse: 'GET /mcp - SSE接続を確立',
+        sse: 'GET /mcp?token=TOKEN - SSE接続を確立（クエリパラメータ認証）',
         messages: 'POST /messages - メッセージを送信',
         health: 'GET /health - ヘルスチェック'
       },
-      description: 'Google Drive API へのアクセスを提供するMCPサーバー（SSE専用）',
+      description: 'Google Drive API へのアクセスを提供するMCPサーバー（SSE専用・クエリパラメータ認証）',
+      authMethod: {
+        method: 'Query Parameter',
+        example: '/mcp?token=YOUR_OIDC_ID_TOKEN'
+      },
+      getToken: 'gcloud auth print-identity-token',
       activeSessions: transports.size,
       timestamp: new Date().toISOString()
     });
   });
 
-  // SSE エンドポイント (GET) - SSE接続を確立（Cloud Runのみ Firebase認証付き）
-  app.get('/mcp', isCloudRun ? firebaseService.authMiddleware() : (req, res, next) => next(), async (req, res) => {
+  // SSE エンドポイント - SSE接続を確立
+  app.all('/mcp', async (req, res) => {
     try {
-      const user = (req as any).user;
-      const userInfo = firebaseService.isFirebaseEnabled() && user ? 
-        `${user.email} (${user.uid})` : 'Anonymous';
-      console.log(`🔗 SSE接続を確立中: ${userInfo}`);
+      // OidcAuthServiceを使用した認証チェック
+      const isAuthenticated = await oidcAuthService.checkQueryParameterAuth(req);
+      if (!isAuthenticated) {
+        console.log(`🔍 認証失敗: ${req.method} ${req.url}`);
+        return res.status(401).json(oidcAuthService.createAuthErrorResponse());
+      }
+
+      const authMethod = oidcAuthService.isCloudRun() ? 'クエリパラメータ認証' : 'ローカル開発（認証なし）';
+      console.log(`🔗 SSE接続を確立中 (${req.method}): ${authMethod}`);
       
       // SSEトランスポートの作成
       const transport = new SSEServerTransport('/messages', res);
@@ -101,12 +139,12 @@ function setupHttpServer() {
       
       // 接続が閉じられた時のクリーンアップ
       res.on('close', () => {
-        console.log(`🔌 SSE接続が閉じられました: ${transport.sessionId} (${userInfo})`);
+        console.log(`🔌 SSE接続が閉じられました: ${transport.sessionId}`);
         transports.delete(transport.sessionId);
       });
 
       res.on('error', (error) => {
-        console.error(`❌ SSE接続エラー: ${transport.sessionId} (${userInfo})`, error);
+        console.error(`❌ SSE接続エラー: ${transport.sessionId}`, error);
         transports.delete(transport.sessionId);
       });
       
@@ -114,7 +152,7 @@ function setupHttpServer() {
       const server = createMcpServer();
       await server.connect(transport);
       
-      console.log(`✅ SSE接続が確立されました: ${transport.sessionId} (${userInfo})`);
+      console.log(`✅ SSE接続が確立されました: ${transport.sessionId} (${authMethod})`);
       
     } catch (error) {
       console.error('❌ SSE接続の確立に失敗:', error);
@@ -127,44 +165,36 @@ function setupHttpServer() {
     }
   });
 
-  // メッセージエンドポイント (POST) - クライアントからのメッセージを受信（Cloud Runのみ Firebase認証付き）
-  app.post('/messages', isCloudRun ? firebaseService.authMiddleware() : (req, res, next) => next(), async (req, res) => {
+  // メッセージエンドポイント - MCPメッセージを受信・処理
+  app.post('/messages', async (req, res) => {
     try {
-      const user = (req as any).user;
-      const userInfo = firebaseService.isFirebaseEnabled() && user ? 
-        `${user.email} (${user.uid})` : 'Anonymous';
-      console.log(`📨 メッセージを受信: ${userInfo}`, JSON.stringify(req.body, null, 2));
-      
-      // セッションIDの取得（クエリパラメータから）
       const sessionId = req.query.sessionId as string;
       
       if (!sessionId) {
-        console.error(`❌ セッションIDが見つかりません (${userInfo})`);
-        return res.status(400).json({ 
-          error: 'セッションIDが必要です',
-          details: 'sessionIdをクエリパラメータで指定してください'
-        });
+        console.log('❌ セッションIDが指定されていません');
+        return res.status(400).json({ error: 'セッションIDが指定されていません' });
       }
       
+      // トランスポートを取得
       const transport = transports.get(sessionId);
       if (!transport) {
-        console.error(`❌ セッションが見つかりません: ${sessionId} (${userInfo})`);
-        return res.status(404).json({ 
-          error: 'セッションが見つかりません',
-          sessionId: sessionId,
-          availableSessions: Array.from(transports.keys())
-        });
+        console.log(`❌ 無効なセッションID: ${sessionId}`);
+        return res.status(404).json({ error: '無効なセッションIDです' });
       }
       
-      // SSEServerTransportのhandlePostMessageメソッドを使用
-      await transport.handlePostMessage(req, res, req.body);
+      // MCPメッセージをトランスポートに転送
+      const messageData = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      transport.handleMessage(messageData);
+      
+      // 成功レスポンスを返す
+      res.status(200).json({ status: 'Message sent to transport' });
       
     } catch (error) {
       console.error('❌ メッセージ処理エラー:', error);
       if (!res.headersSent) {
         res.status(500).json({ 
-          error: 'メッセージの処理に失敗しました',
-          details: error.message
+          error: 'メッセージ処理に失敗しました',
+          details: error.message 
         });
       }
     }
@@ -174,7 +204,7 @@ function setupHttpServer() {
   app.options('*', (req, res) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Cache-Control, X-Session-Id');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Cache-Control');
     res.sendStatus(200);
   });
 }
@@ -187,12 +217,13 @@ async function startHttpServer() {
   
   return new Promise<void>((resolve, reject) => {
     const server = app.listen(PORT, '0.0.0.0', () => {
-      console.log(`✅ MCP Google Drive Server (SSE) が起動しました`);
+      console.log(`✅ MCP Google Drive Server が起動しました`);
       console.log(`🌐 ポート: ${PORT}`);
-      console.log(`🔧 環境: ${isCloudRun ? 'Google Cloud Run' : 'Local'}`);
-      console.log(`📡 SSEエンドポイント: ${isCloudRun ? 'Cloud Run URL' : `http://localhost:${PORT}`}/mcp`);
-      console.log(`💬 メッセージエンドポイント: ${isCloudRun ? 'Cloud Run URL' : `http://localhost:${PORT}`}/messages`);
-      console.log(`🏥 ヘルスチェック: ${isCloudRun ? 'Cloud Run URL' : `http://localhost:${PORT}`}/health`);
+      console.log(`🔧 環境: ${oidcAuthService.isCloudRun() ? 'Google Cloud Run' : 'Local'}`);
+      console.log(`🔐 認証: ${oidcAuthService.isCloudRun() ? 'OIDC ID Token (Query Parameter)' : 'ローカル開発（認証なし）'}`);
+      console.log(`📡 SSEエンドポイント: ${oidcAuthService.isCloudRun() ? 'Cloud Run URL' : `http://localhost:${PORT}`}/mcp`);
+      console.log(`💬 メッセージエンドポイント: ${oidcAuthService.isCloudRun() ? 'Cloud Run URL' : `http://localhost:${PORT}`}/messages`);
+      console.log(`🏥 ヘルスチェック: ${oidcAuthService.isCloudRun() ? 'Cloud Run URL' : `http://localhost:${PORT}`}/health`);
       resolve();
     });
     
@@ -203,19 +234,25 @@ async function startHttpServer() {
   });
 }
 
-// グレースフルシャットダウンの処理
+// シャットダウンハンドラーの設定
 function setupShutdownHandlers() {
   const shutdown = () => {
-    console.log('\n🛑 シャットダウン中...');
+    console.log('\n🔄 サーバーを停止中...');
     
-    // 全てのSSE接続を閉じる
-    transports.forEach((transport, sessionId) => {
+    // アクティブなSSE接続をクリーンアップ
+    for (const [sessionId, transport] of transports) {
       console.log(`🔌 セッションを終了中: ${sessionId}`);
-      transport.close();
-    });
+      try {
+        if (transport && typeof transport.close === 'function') {
+          transport.close();
+        }
+      } catch (error) {
+        console.error(`❌ セッション終了エラー: ${sessionId}`, error);
+      }
+    }
     transports.clear();
     
-    console.log('✅ サーバーが正常に終了しました');
+    console.log('✅ サーバーが正常に停止しました');
     process.exit(0);
   };
 
@@ -223,12 +260,19 @@ function setupShutdownHandlers() {
   process.on('SIGTERM', shutdown);
 }
 
-// メイン関数
+// メイン実行関数
 async function main() {
   try {
-    console.log(`🚀 MCP Google Drive Server (SSE専用) を起動中...`);
-    console.log(`🔧 環境: ${isCloudRun ? 'Google Cloud Run' : 'Local'}`);
-    console.log(`📡 ポート: ${process.env.PORT || '8080'}`);
+    console.log('🚀 MCP Google Drive Server を起動中...');
+    
+    // Cloud Run環境でのOIDC認証チェック
+    if (oidcAuthService.isCloudRun()) {
+      console.log('🌐 Cloud Run環境を検出しました');
+      console.log('🔐 OIDC IDトークン認証が必要です（クエリパラメータ）');
+    } else {
+      console.log('💻 ローカル開発環境を検出しました');
+      console.log('⚠️ 認証は無効化されます');
+    }
     
     // シャットダウンハンドラーの設定
     setupShutdownHandlers();
@@ -237,10 +281,13 @@ async function main() {
     await startHttpServer();
     
   } catch (error) {
-    console.error("❌ サーバー起動エラー:", error);
+    console.error('❌ サーバー起動に失敗しました:', error);
     process.exit(1);
   }
 }
 
-// サーバーの起動
-main(); 
+// メイン実行
+main().catch((error) => {
+  console.error('❌ 予期しないエラーが発生しました:', error);
+  process.exit(1);
+}); 

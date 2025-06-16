@@ -28,17 +28,43 @@ export interface AuthErrorResponse extends ErrorResponse {}
  * @returns 認証失敗時のエラーレスポンス、認証成功時はnull
  */
 export function checkAuthAndReturnError(auth: OAuth2Client | null): AuthErrorResponse | null {
+  console.log('🔍 [checkAuthAndReturnError] 認証チェック開始');
+  console.log('🔍 [checkAuthAndReturnError] 認証クライアント:', auth ? `存在 (${auth.constructor.name})` : 'null');
+  
   if (!auth) {
+    console.log('❌ [checkAuthAndReturnError] 認証クライアントがnullです');
+    
+    // 詳細なデバッグ情報を含めたエラーメッセージ
+    const debugInfo = {
+      error: "Google認証に失敗しました",
+      cause: "getAuthClient()がnullを返しました",
+      possibleReasons: [
+        "サービスアカウントキーファイルが見つからない",
+        "サービスアカウントキーの権限が不正",
+        "Google APIの認証プロセスでエラーが発生",
+        "MCPサーバー内の認証フローに問題"
+      ],
+      debugSteps: [
+        "1. credentials/service-account-key.json の存在確認",
+        "2. サービスアカウントの権限確認",
+        "3. サーバーログの確認",
+        "4. 直接認証テストとの比較"
+      ],
+      timestamp: new Date().toISOString()
+    };
+    
     return {
       content: [
         {
           type: "text",
-          text: "Google認証に失敗しました。認証情報とトークンを確認してください。",
+          text: `認証エラー詳細:\n${JSON.stringify(debugInfo, null, 2)}`,
         },
       ],
       isError: true
     };
   }
+  
+  console.log('✅ [checkAuthAndReturnError] 認証チェック成功');
   return null;
 }
 
