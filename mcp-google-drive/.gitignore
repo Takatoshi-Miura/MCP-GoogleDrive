@@ -1,0 +1,46 @@
+# Build outputs
+/build
+/dist
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Credentials and auth files (セキュリティ重要)
+credentials/
+*.json
+!package*.json
+!tsconfig.json
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Mac OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.temp
+debug-*.js
+test-*.js 
