@@ -109,7 +109,17 @@ npm run auto-auth
 - ブラウザが自動で開かない場合は、コンソールに表示されるURLを手動でブラウザに貼り付けてください
 - 認証が完了すると、コンソールに「✅ 認証が正常に完了しました！」と表示されます
 
-6. mcp.jsonの設定
+6. MCPサーバーの設定
+
+### Claude Codeでの設定
+
+Claude Codeを使用している場合は、以下のコマンドで追加できます：
+
+```bash
+claude mcp add mcp-google-drive -- node ~/MCP-GoogleDrive/mcp-google-drive/build/index.js
+```
+
+### Cursorでの設定
 
 Cursor SettingsのMCP Serversで「Add new global MCP server」を押下し、mcp.jsonに以下を追記
 
