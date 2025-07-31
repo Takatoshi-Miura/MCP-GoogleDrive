@@ -144,27 +144,65 @@ export class DocsService {
   async insertTextToDoc(
     documentId: string,
     location: number,
-    text: string
+    text: string,
+    tabId?: string
   ): Promise<any> {
     const docs = google.docs({ version: "v1", auth: this.auth });
     try {
+      // 挿入リクエストの場所オブジェクトを構築
+      const insertLocation: { index: number; tabId?: string } = {
+        index: location
+      };
+
+      if (tabId) {
+        try {
+          const tabs = await this.getDocumentTabs(documentId);
+          const targetTab = tabs.find(tab => tab.tabId === tabId);
+          
+          if (targetTab) {
+            // タブが存在する場合は、APIにtabIdを直接指定
+            insertLocation.tabId = tabId;
+          } else {
+            // 指定されたタブIDが見つからない場合はエラーを返す
+            const availableTabIds = tabs.map(tab => `ID: ${tab.tabId} (タイトル: ${tab.title})`);
+            throw new Error(
+              `指定されたタブID "${tabId}" が見つかりません。\n利用可能なタブID一覧:\n${availableTabIds.join('\n')}`
+            );
+          }
+        } catch (error) {
+          // タブID確認エラーまたは見つからない場合はエラーを再スロー
+          throw error;
+        }
+      }
+
+      // Google Docs APIのリクエスト構築
+      const insertTextRequest: any = {
+        insertText: {
+          location: {
+            index: location
+          },
+          text,
+        },
+      };
+
+      // タブIDが指定されている場合は、location内に含める
+      if (tabId && insertLocation.tabId) {
+        insertTextRequest.insertText.location.tabId = insertLocation.tabId;
+      }
+
       const response = await docs.documents.batchUpdate({
         documentId,
         requestBody: {
-          requests: [
-            {
-              insertText: {
-                location: {
-                  index: location,
-                },
-                text,
-              },
-            },
-          ],
+          requests: [insertTextRequest],
         },
       });
       
-      return response.data;
+      return {
+        ...response.data,
+        targetTabId: insertLocation.tabId || 'first_tab',
+        originalLocation: location,
+        requestedTabId: tabId
+      };
     } catch (error) {
       console.error("Googleドキュメントへのテキスト挿入エラー:", error);
       throw error;

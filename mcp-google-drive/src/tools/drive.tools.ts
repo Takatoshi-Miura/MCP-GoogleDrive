@@ -197,6 +197,7 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
       fileId: z.string().describe("挿入対象ファイルのID"),
       fileType: z.enum(['docs', 'sheets', 'presentations']).describe("ファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート), 'presentations'(スライド)"),
       // ドキュメント用パラメータ
+      tabId: z.string().optional().describe("ドキュメントの場合：挿入先のタブID（省略時は最初のタブ）"),
       location: z.number().optional().describe("ドキュメントの場合：挿入位置（文字インデックス）"),
       text: z.string().optional().describe("ドキュメント・スライドの場合：挿入するテキスト"),
       // スプレッドシート用パラメータ
@@ -212,7 +213,7 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
         height: z.number()
       }).optional().describe("スライドの場合：テキストボックスの位置とサイズ"),
     },
-    async ({ fileId, fileType, location, text, range, values, insertPosition, slideIndex, bounds }) => {
+    async ({ fileId, fileType, tabId, location, text, range, values, insertPosition, slideIndex, bounds }) => {
       try {
         const auth = await getAuthClient();
         const authError = checkAuthAndReturnError(auth);
@@ -225,7 +226,7 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
           }
 
           const docsService = new DocsService(auth);
-          const result = await docsService.insertTextToDoc(fileId, location, text);
+          const result = await docsService.insertTextToDoc(fileId, location, text, tabId);
           
           return createSuccessResponse({
             status: "success",
