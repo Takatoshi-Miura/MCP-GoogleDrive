@@ -62,13 +62,14 @@ export function createSuccessResponse(data: any): SuccessResponse {
  * エラー時のレスポンスを作成します
  * @param errorMessage エラーメッセージ
  * @param error エラーオブジェクト (オプション)
+ * @param additionalInfo 追加情報 (オプション)
  * @returns エラーレスポンス
  */
-export function createErrorResponse(errorMessage: string, error?: any): ErrorResponse {
+export function createErrorResponse(errorMessage: string, error?: any, additionalInfo?: any): ErrorResponse {
   const message = error instanceof Error ? `${errorMessage}: ${error.message}` : 
                   error ? `${errorMessage}: ${String(error)}` : errorMessage;
   
-  return {
+  const response: ErrorResponse = {
     content: [
       {
         type: "text",
@@ -77,6 +78,13 @@ export function createErrorResponse(errorMessage: string, error?: any): ErrorRes
     ],
     isError: true
   };
+
+  // 追加情報がある場合は含める
+  if (additionalInfo) {
+    Object.assign(response, additionalInfo);
+  }
+  
+  return response;
 }
 
 /**

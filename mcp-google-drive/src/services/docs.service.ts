@@ -149,9 +149,22 @@ export class DocsService {
   ): Promise<any> {
     const docs = google.docs({ version: "v1", auth: this.auth });
     try {
+      // 挿入位置を検証
+      const validation = await this.validateInsertPosition(documentId, location, tabId);
+      
+      if (!validation.isValid) {
+        throw new Error(validation.errorMessage || "無効な挿入位置です");
+      }
+
+      // location が -1 の場合は末尾に挿入
+      let actualLocation = location;
+      if (location === -1) {
+        actualLocation = validation.maxIndex;
+      }
+
       // 挿入リクエストの場所オブジェクトを構築
       const insertLocation: { index: number; tabId?: string } = {
-        index: location
+        index: actualLocation
       };
 
       if (tabId) {
@@ -179,7 +192,7 @@ export class DocsService {
       const insertTextRequest: any = {
         insertText: {
           location: {
-            index: location
+            index: actualLocation
           },
           text,
         },
@@ -201,7 +214,12 @@ export class DocsService {
         ...response.data,
         targetTabId: insertLocation.tabId || 'first_tab',
         originalLocation: location,
-        requestedTabId: tabId
+        actualLocation: actualLocation,
+        requestedTabId: tabId,
+        validationInfo: {
+          maxIndex: validation.maxIndex,
+          tabTitle: validation.tabTitle
+        }
       };
     } catch (error) {
       console.error("Googleドキュメントへのテキスト挿入エラー:", error);
@@ -452,6 +470,135 @@ export class DocsService {
     } catch (error) {
       console.error("ドキュメントタブテキスト抽出エラー:", error);
       throw error;
+    }
+  }
+
+  // 指定されたタブまたはドキュメント全体の文字数を取得する関数
+  async getDocumentTabContentLength(documentId: string, tabId?: string): Promise<{ length: number; tabTitle?: string }> {
+    try {
+      const docs = google.docs({ version: "v1", auth: this.auth });
+      
+      // includeTabsContentをtrueに設定してドキュメントを取得
+      const response = await docs.documents.get({
+        documentId,
+        includeTabsContent: true
+      });
+      
+      const document = response.data;
+      
+      if (tabId) {
+        // 指定されたタブIDを検索する関数
+        function findTabById(tabs: any[], targetTabId: string): any {
+          for (const tab of tabs) {
+            if (tab.tabProperties && tab.tabProperties.tabId === targetTabId) {
+              return tab;
+            }
+            // 子タブも検索
+            if (tab.childTabs && tab.childTabs.length > 0) {
+              const foundTab = findTabById(tab.childTabs, targetTabId);
+              if (foundTab) return foundTab;
+            }
+          }
+          return null;
+        }
+        
+        // タブが存在しない場合
+        if (!document.tabs || document.tabs.length === 0) {
+          throw new Error("ドキュメントにタブが存在しません");
+        }
+        
+        // 指定されたタブIDを検索
+        const targetTab = findTabById(document.tabs, tabId);
+        
+        if (!targetTab) {
+          throw new Error(`指定されたタブID "${tabId}" が見つかりません`);
+        }
+        
+        // DocumentTabオブジェクトからコンテンツの長さを計算
+        const documentTab = targetTab.documentTab;
+        
+        if (!documentTab || !documentTab.body || !documentTab.body.content) {
+          return {
+            length: 0,
+            tabTitle: targetTab.tabProperties?.title || "無題のタブ"
+          };
+        }
+        
+        // タブ内のコンテンツの文字数を計算
+        let totalLength = 0;
+        for (const element of documentTab.body.content) {
+          if (element.endIndex !== undefined) {
+            totalLength = Math.max(totalLength, element.endIndex);
+          }
+        }
+        
+        return {
+          length: totalLength - 1, // endIndexは1ベースなので調整
+          tabTitle: targetTab.tabProperties?.title || "無題のタブ"
+        };
+      } else {
+        // ドキュメント全体の文字数を取得
+        if (!document.body || !document.body.content) {
+          return { length: 0 };
+        }
+        
+        let totalLength = 0;
+        for (const element of document.body.content) {
+          if (element.endIndex !== undefined) {
+            totalLength = Math.max(totalLength, element.endIndex);
+          }
+        }
+        
+        return { length: totalLength - 1 }; // endIndexは1ベースなので調整
+      }
+    } catch (error) {
+      console.error("ドキュメント文字数取得エラー:", error);
+      throw error;
+    }
+  }
+
+  // 挿入位置を検証する関数
+  async validateInsertPosition(documentId: string, location: number, tabId?: string): Promise<{ 
+    isValid: boolean; 
+    maxIndex: number; 
+    errorMessage?: string; 
+    tabTitle?: string 
+  }> {
+    try {
+      // location が -1 の場合は末尾挿入として有効
+      if (location === -1) {
+        const lengthInfo = await this.getDocumentTabContentLength(documentId, tabId);
+        return {
+          isValid: true,
+          maxIndex: lengthInfo.length,
+          tabTitle: lengthInfo.tabTitle
+        };
+      }
+      
+      const lengthInfo = await this.getDocumentTabContentLength(documentId, tabId);
+      const maxIndex = lengthInfo.length;
+      
+      if (location < 0 || location > maxIndex) {
+        const tabInfo = tabId ? ` (タブ: ${lengthInfo.tabTitle})` : "";
+        return {
+          isValid: false,
+          maxIndex,
+          errorMessage: `挿入位置 ${location} は無効です${tabInfo}。有効な位置は 0 ～ ${maxIndex} です。現在の文字数: ${maxIndex}`,
+          tabTitle: lengthInfo.tabTitle
+        };
+      }
+      
+      return {
+        isValid: true,
+        maxIndex,
+        tabTitle: lengthInfo.tabTitle
+      };
+    } catch (error) {
+      return {
+        isValid: false,
+        maxIndex: 0,
+        errorMessage: `位置検証エラー: ${error instanceof Error ? error.message : String(error)}`
+      };
     }
   }
 

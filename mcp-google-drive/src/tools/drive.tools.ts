@@ -198,7 +198,7 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
       fileType: z.enum(['docs', 'sheets', 'presentations']).describe("ファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート), 'presentations'(スライド)"),
       // ドキュメント用パラメータ
       tabId: z.string().optional().describe("ドキュメントの場合：挿入先のタブID（省略時は最初のタブ）"),
-      location: z.number().optional().describe("ドキュメントの場合：挿入位置（文字インデックス）"),
+      location: z.number().optional().describe("ドキュメントの場合：挿入位置（文字インデックス、-1で末尾に自動挿入）"),
       text: z.string().optional().describe("ドキュメント・スライドの場合：挿入するテキスト"),
       // スプレッドシート用パラメータ
       range: z.string().optional().describe("スプレッドシートの場合：挿入範囲（例: Sheet1!A1）"),
@@ -281,6 +281,16 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
         return createUnsupportedFileTypeError(fileType);
 
       } catch (error: any) {
+        // ドキュメントの位置エラーの場合は詳細な情報を提供
+        if (fileType === 'docs' && error.message && error.message.includes('位置')) {
+          return createErrorResponse("ドキュメントへの値挿入に失敗しました", error, {
+            tip: "挿入位置を確認してください。location: -1 で末尾に自動挿入できます。",
+            fileType: fileType,
+            requestedLocation: location,
+            requestedTabId: tabId
+          });
+        }
+        
         return createErrorResponse("ファイルへの値挿入に失敗しました", error);
       }
     }
