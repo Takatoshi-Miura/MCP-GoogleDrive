@@ -483,4 +483,69 @@ export class DriveService {
       };
     }
   }
+
+  // 統合的な部分コピー機能
+  async copyPart(
+    fileId: string,
+    fileType: 'docs' | 'sheets' | 'presentations',
+    sourcePartId: string,
+    newPartName?: string
+  ): Promise<{
+    status: string;
+    fileId: string;
+    fileType: string;
+    sourcePartId: string;
+    newPartName?: string;
+    result: any;
+  }> {
+    try {
+      let result: any;
+
+      switch (fileType) {
+        case 'docs':
+          const docsService = new DocsService(this.auth);
+          result = await docsService.copyPart(fileId, sourcePartId, newPartName);
+          break;
+
+        case 'sheets':
+          const sheetsService = new SheetsService(this.auth);
+          // スプレッドシートの場合、sourcePartIdはsheetIdとして扱う
+          const sourceSheetId = parseInt(sourcePartId, 10);
+          if (isNaN(sourceSheetId)) {
+            throw new Error(`無効なシートID: ${sourcePartId}`);
+          }
+          result = await sheetsService.copySheet(fileId, sourceSheetId, newPartName);
+          break;
+
+        case 'presentations':
+          const slidesService = new SlidesService(this.auth);
+          result = await slidesService.copyPart(fileId, sourcePartId, newPartName);
+          break;
+
+        default:
+          throw new Error(`サポートされていないファイルタイプです: ${fileType}`);
+      }
+
+      return {
+        status: 'success',
+        fileId,
+        fileType,
+        sourcePartId,
+        newPartName,
+        result
+      };
+    } catch (error) {
+      console.error(`部分コピーエラー (${fileType}):`, error);
+      return {
+        status: 'error',
+        fileId,
+        fileType,
+        sourcePartId,
+        newPartName,
+        result: {
+          error: error instanceof Error ? error.message : '部分コピーに失敗しました'
+        }
+      };
+    }
+  }
 } 

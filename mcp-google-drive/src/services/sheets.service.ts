@@ -759,4 +759,48 @@ export class SheetsService {
       return { startRow: 0, endRow: 10, startCol: 0, endCol: 1 };
     }
   }
+
+  // スプレッドシートのシートをコピーする関数
+  async copySheet(
+    spreadsheetId: string,
+    sourceSheetId: number,
+    newSheetName?: string
+  ): Promise<any> {
+    const sheets = google.sheets({ version: "v4", auth: this.auth });
+    try {
+      const response = await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              duplicateSheet: {
+                sourceSheetId: sourceSheetId,
+                newSheetName: newSheetName || `コピー - ${sourceSheetId}`,
+                insertSheetIndex: 0
+              }
+            }
+          ]
+        }
+      });
+
+      const duplicatedSheet = response.data.replies?.[0]?.duplicateSheet;
+      return {
+        status: 'success',
+        message: `シート "${newSheetName || `コピー - ${sourceSheetId}`}" をコピーしました`,
+        spreadsheetId: spreadsheetId,
+        sourceSheetId: sourceSheetId,
+        newSheetId: duplicatedSheet?.properties?.sheetId,
+        newSheetName: duplicatedSheet?.properties?.title,
+        response: response.data
+      };
+    } catch (error) {
+      console.error("スプレッドシートシートコピーエラー:", error);
+      return {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'シートのコピーに失敗しました',
+        spreadsheetId,
+        sourceSheetId
+      };
+    }
+  }
 } 

@@ -700,4 +700,27 @@ export class DocsService {
       };
     }
   }
+
+  // ドキュメントの部分をコピーする関数（未実装）
+  async copyPart(
+    documentId: string,
+    sourcePartId: string,
+    newPartName?: string
+  ): Promise<any> {
+    return {
+      status: 'error',
+      message: 'ドキュメントの部分コピー機能は未実装です',
+      documentId: documentId,
+      sourcePartId: sourcePartId,
+      newPartName: newPartName,
+      error: 'NOT_IMPLEMENTED',
+      note: 'この機能は現在実装されていません。スプレッドシートのシートコピーのみ対応しています。',
+      supportedOperations: [
+        'テキストの挿入・編集',
+        'フォーマットの変更',
+        'グラフの追加',
+        '既存タブの読み取り'
+      ]
+    };
+  }
 } 

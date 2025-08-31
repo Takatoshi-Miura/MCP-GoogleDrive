@@ -487,4 +487,37 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
       }
     }
   );
+
+  // 部分コピーツール
+  server.tool(
+    "g_drive_copy_element",
+    "指定されたファイルの部分をコピーする（スプレッドシートのシートコピーのみ実装済み）",
+    {
+      fileId: z.string().describe("コピー対象ファイルのID"),
+      fileType: z.enum(['docs', 'sheets', 'presentations']).describe(
+        "ファイルの種類: 'docs'(ドキュメント - 未実装), 'sheets'(スプレッドシート - 実装済み), 'presentations'(スライド - 未実装)"
+      ),
+      sourcePartId: z.string().describe("コピー元の部分ID（スプレッドシートの場合：シートID）"),
+      newPartName: z.string().optional().describe("新しい部分の名前（スプレッドシートの場合：新しいシート名）")
+    },
+    async ({ fileId, fileType, sourcePartId, newPartName }) => {
+      try {
+        const auth = await getAuthClient();
+        const authError = checkAuthAndReturnError(auth);
+        if (authError) return authError;
+
+        const driveService = new DriveService(auth);
+        const result = await driveService.copyPart(
+          fileId,
+          fileType as 'docs' | 'sheets' | 'presentations',
+          sourcePartId,
+          newPartName
+        );
+
+        return createSuccessResponse(result);
+      } catch (error: any) {
+        return createErrorResponse("部分コピーに失敗しました", error);
+      }
+    }
+  );
 } 

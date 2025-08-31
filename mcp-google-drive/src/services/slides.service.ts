@@ -639,4 +639,27 @@ export class SlidesService {
       throw error;
     }
   }
+
+  // スライドの部分をコピーする関数（未実装）
+  async copyPart(
+    presentationId: string,
+    sourcePartId: string,
+    newPartName?: string
+  ): Promise<any> {
+    return {
+      status: 'error',
+      message: 'スライドの部分コピー機能は未実装です',
+      presentationId: presentationId,
+      sourcePartId: sourcePartId,
+      newPartName: newPartName,
+      error: 'NOT_IMPLEMENTED',
+      note: 'この機能は現在実装されていません。スプレッドシートのシートコピーのみ対応しています。',
+      supportedOperations: [
+        'テキストの挿入',
+        'グラフの追加',
+        '新規スライドの作成',
+        '既存スライドの読み取り'
+      ]
+    };
+  }
 } 
