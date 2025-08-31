@@ -519,7 +519,7 @@ export class DriveService {
 
         case 'presentations':
           const slidesService = new SlidesService(this.auth);
-          result = await slidesService.copyPart(fileId, sourcePartId, newPartName);
+          result = await slidesService.copySlide(fileId, sourcePartId, newPartName);
           break;
 
         default:

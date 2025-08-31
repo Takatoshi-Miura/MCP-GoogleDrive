@@ -640,26 +640,119 @@ export class SlidesService {
     }
   }
 
-  // スライドの部分をコピーする関数（未実装）
-  async copyPart(
+  // スライドをコピーする関数
+  async copySlide(
     presentationId: string,
-    sourcePartId: string,
-    newPartName?: string
+    sourceSlideId: string,
+    newSlideTitle?: string
   ): Promise<any> {
-    return {
-      status: 'error',
-      message: 'スライドの部分コピー機能は未実装です',
-      presentationId: presentationId,
-      sourcePartId: sourcePartId,
-      newPartName: newPartName,
-      error: 'NOT_IMPLEMENTED',
-      note: 'この機能は現在実装されていません。スプレッドシートのシートコピーのみ対応しています。',
-      supportedOperations: [
-        'テキストの挿入',
-        'グラフの追加',
-        '新規スライドの作成',
-        '既存スライドの読み取り'
-      ]
-    };
+    const slides = google.slides({ version: "v1", auth: this.auth });
+    
+    try {
+      // プレゼンテーション情報を取得してスライドの存在確認
+      const presentation = await slides.presentations.get({
+        presentationId
+      });
+
+      if (!presentation.data.slides) {
+        throw new Error('プレゼンテーションにスライドが存在しません');
+      }
+
+      // 指定されたスライドIDを検索
+      const sourceSlide = presentation.data.slides.find(slide => slide.objectId === sourceSlideId);
+      if (!sourceSlide) {
+        const availableSlides = presentation.data.slides.map((slide, index) => 
+          `スライド${index + 1}: ${slide.objectId}`
+        ).join(', ');
+        throw new Error(`指定されたスライドID "${sourceSlideId}" が見つかりません。利用可能なスライド: ${availableSlides}`);
+      }
+
+      const duplicateSlideObjectId = `slide_copy_${Date.now()}`;
+      
+      // スライドを複製するリクエストを構築
+      const requests: any[] = [
+        {
+          duplicateObject: {
+            objectId: sourceSlideId,
+            objectIds: {
+              [sourceSlideId]: duplicateSlideObjectId
+            }
+          }
+        }
+      ];
+
+      // バッチ更新を実行
+      const response = await slides.presentations.batchUpdate({
+        presentationId,
+        requestBody: {
+          requests: requests
+        }
+      });
+
+      // 新しいタイトルが指定されている場合は、複製後のスライドのタイトル要素を更新
+      if (newSlideTitle) {
+        try {
+          const updatedPresentation = await slides.presentations.get({
+            presentationId
+          });
+          
+          const duplicatedSlide = updatedPresentation.data.slides?.find(slide => slide.objectId === duplicateSlideObjectId);
+          if (duplicatedSlide && duplicatedSlide.pageElements) {
+            // タイトル要素を探す（プレースホルダーがTITLEのもの、または最初のテキスト要素）
+            const titleElement = duplicatedSlide.pageElements.find(element => 
+              element.shape && element.shape.text && 
+              (element.shape.placeholder?.type === 'TITLE' || element.shape.placeholder?.type === 'CENTERED_TITLE')
+            );
+            
+            if (titleElement && titleElement.objectId) {
+              // タイトル要素が見つかった場合、テキストを更新
+              await slides.presentations.batchUpdate({
+                presentationId,
+                requestBody: {
+                  requests: [
+                    {
+                      deleteText: {
+                        objectId: titleElement.objectId,
+                        textRange: {
+                          type: 'ALL'
+                        }
+                      }
+                    },
+                    {
+                      insertText: {
+                        objectId: titleElement.objectId,
+                        text: newSlideTitle
+                      }
+                    }
+                  ]
+                }
+              });
+            }
+          }
+        } catch (titleUpdateError) {
+          console.log('タイトル更新はスキップされました:', titleUpdateError);
+          // タイトル更新に失敗しても、スライドのコピー自体は成功しているので続行
+        }
+      }
+
+      return {
+        status: 'success',
+        message: `スライド "${newSlideTitle || sourceSlideId}" をコピーしました`,
+        presentationId: presentationId,
+        sourceSlideId: sourceSlideId,
+        duplicatedSlideId: duplicateSlideObjectId,
+        newSlideTitle: newSlideTitle,
+        response: response.data
+      };
+    } catch (error) {
+      console.error("スライドコピーエラー:", error);
+      return {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'スライドのコピーに失敗しました',
+        presentationId,
+        sourceSlideId,
+        newSlideTitle
+      };
+    }
   }
 } 
