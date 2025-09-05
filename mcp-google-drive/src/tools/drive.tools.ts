@@ -18,13 +18,13 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
   // Googleドライブファイル一覧取得ツール
   server.tool(
     "g_drive_list_files_by_type",
-    "指定されたタイプのGoogleドライブファイル一覧を取得する",
+    "Retrieve a list of Google Drive files of a specified type",
     {
       fileType: z.enum(['all', 'sheets', 'docs', 'presentations', 'pdf']).describe(
-        "取得するファイルの種類: 'all'(全て), 'sheets'(スプレッドシート), 'docs'(ドキュメント), 'presentations'(スライド), 'pdf'(PDFファイル)"
+        "Type of files to retrieve: 'all' (all files), 'sheets' (spreadsheets), 'docs' (documents), 'presentations' (slides), 'pdf' (PDF files)"
       ),
-      maxResults: z.number().optional().describe("取得する最大ファイル数（デフォルト: 50、最大: 100）"),
-      customQuery: z.string().optional().describe("カスタム検索クエリ（fileType='all'の場合のみ有効）")
+      maxResults: z.number().optional().describe("Maximum number of files to retrieve (default: 50, max: 100)"),
+      customQuery: z.string().optional().describe("Custom search query (only effective when fileType='all')")
     },
     async ({ fileType, maxResults = 50, customQuery }) => {
       try {
@@ -56,9 +56,9 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
   // Google Driveファイル検索ツール（基本検索）
   server.tool(
     "g_drive_search_files",
-    "Google Drive内のファイルを検索する",
+    "Search for files in Google Drive",
     {
-      query: z.string().describe("検索クエリ")
+      query: z.string().describe("Search query")
     },
     async ({ query }) => {
       try {
@@ -102,11 +102,11 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
   // 統合的なファイル内容読み取りツール
   server.tool(
     "g_drive_read_file",
-    "GoogleDriveのファイル内容を読み取る（ドキュメント、スプレッドシート、スライド、PDF対応）",
+    "Read the contents of a Google Drive file (supports documents, spreadsheets, slides, and PDFs)",
     {
-      fileId: z.string().describe("読み取るファイルのID"),
+      fileId: z.string().describe("ID of the file to read"),
       fileType: z.enum(['docs', 'sheets', 'presentations', 'pdf']).describe(
-        "ファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート), 'presentations'(スライド), 'pdf'(PDFファイル)"
+        "File type: 'docs' (documents), 'sheets' (spreadsheets), 'presentations' (slides), 'pdf' (PDF files)"
       )
     },
     async ({ fileId, fileType }) => {
@@ -128,11 +128,11 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
   // 統合的なファイルコメント取得ツール
   server.tool(
     "g_drive_get_comments",
-    "GoogleDriveのファイルコメントを取得する（ドキュメント、スプレッドシート、スライド対応）",
+    "Retrieve comments from Google Drive files (supports documents, spreadsheets, and slides)",
     {
-      fileId: z.string().describe("コメントを取得するファイルのID"),
+      fileId: z.string().describe("ID of the file to retrieve comments from"),
       fileType: z.enum(['docs', 'sheets', 'presentations']).describe(
-        "ファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート), 'presentations'(スライド)"
+        "File type: 'docs' (documents), 'sheets' (spreadsheets), 'presentations' (slides)"
       )
     },
     async ({ fileId, fileType }) => {
@@ -154,15 +154,15 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
   // ファイル詳細読み取りツール（ページ単位）
   server.tool(
     "g_drive_read_file_part",
-    "ファイルを1ページ単位で詳細に読み取る（ドキュメント、スプレッドシート、スライド対応）",
+    "Read file contents in detail page by page (supports documents, spreadsheets, and slides)",
     {
-      fileId: z.string().describe("読み取るファイルのID"),
+      fileId: z.string().describe("ID of the file to read"),
       fileType: z.enum(['docs', 'sheets', 'presentations']).describe(
-        "ファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート), 'presentations'(スライド)"
+        "File type: 'docs' (documents), 'sheets' (spreadsheets), 'presentations' (slides)"
       ),
-      tabId: z.string().optional().describe("ドキュメントの場合：読み取るタブのID"),
-      range: z.string().optional().describe("スプレッドシートの場合：読み取る範囲（例: Sheet1!A1:B10）"),
-      pageNumber: z.number().optional().describe("スライドの場合：読み取るページ番号（1から開始）")
+      tabId: z.string().optional().describe("For documents: ID of the tab to read"),
+      range: z.string().optional().describe("For spreadsheets: range to read (e.g., Sheet1!A1:B10)"),
+      pageNumber: z.number().optional().describe("For slides: page number to read (starting from 1)")
     },
     async ({ fileId, fileType, tabId, range, pageNumber }) => {
       try {
@@ -192,26 +192,26 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
   // 統合的なファイル値挿入ツール
   server.tool(
     "g_drive_insert_value",
-    "ドキュメント、スプレッドシート、またはスライドに値を挿入する（ファイル種別に応じて適切なツールを呼び出し）",
+    "Insert values into documents, spreadsheets, or slides (calls the appropriate tool based on file type)",
     {
-      fileId: z.string().describe("挿入対象ファイルのID"),
-      fileType: z.enum(['docs', 'sheets', 'presentations']).describe("ファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート), 'presentations'(スライド)"),
+      fileId: z.string().describe("ID of the target file for insertion"),
+      fileType: z.enum(['docs', 'sheets', 'presentations']).describe("File type: 'docs' (documents), 'sheets' (spreadsheets), 'presentations' (slides)"),
       // ドキュメント用パラメータ
-      tabId: z.string().optional().describe("ドキュメントの場合：挿入先のタブID（省略時は最初のタブ）"),
-      location: z.number().optional().describe("ドキュメントの場合：挿入位置（文字インデックス、-1で末尾に自動挿入）"),
-      text: z.string().optional().describe("ドキュメント・スライドの場合：挿入するテキスト"),
+      tabId: z.string().optional().describe("For documents: target tab ID (defaults to first tab if omitted)"),
+      location: z.number().optional().describe("For documents: insertion position (character index, -1 for automatic insertion at end)"),
+      text: z.string().optional().describe("For documents and slides: text to insert"),
       // スプレッドシート用パラメータ
-      range: z.string().optional().describe("スプレッドシートの場合：挿入範囲（例: Sheet1!A1）"),
-      values: z.array(z.array(z.any())).optional().describe("スプレッドシートの場合：挿入する値の2次元配列"),
-      insertPosition: z.number().optional().describe("スプレッドシートの場合：挿入する行番号（1から開始、省略時は末尾に追加）"),
+      range: z.string().optional().describe("For spreadsheets: insertion range (e.g., Sheet1!A1)"),
+      values: z.array(z.array(z.any())).optional().describe("For spreadsheets: 2D array of values to insert"),
+      insertPosition: z.number().optional().describe("For spreadsheets: row number to insert (starting from 1, defaults to end if omitted)"),
       // スライド用パラメータ
-      slideIndex: z.number().optional().describe("スライドの場合：対象スライドのインデックス（0から開始）"),
+      slideIndex: z.number().optional().describe("For slides: target slide index (starting from 0)"),
       bounds: z.object({
         x: z.number(),
         y: z.number(),
         width: z.number(),
         height: z.number()
-      }).optional().describe("スライドの場合：テキストボックスの位置とサイズ"),
+      }).optional().describe("For slides: position and size of text box"),
     },
     async ({ fileId, fileType, tabId, location, text, range, values, insertPosition, slideIndex, bounds }) => {
       try {
@@ -299,10 +299,10 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
   // ファイル構造取得ツール
   server.tool(
     "g_drive_get_file_structure",
-    "ファイルの構造を取得する（ドキュメント、スプレッドシート対応）",
+    "Get file structure (supports documents and spreadsheets)",
     {
-      fileId: z.string().describe("ファイルのID"),
-      fileType: z.enum(['docs', 'sheets']).describe("ファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート)")
+      fileId: z.string().describe("File ID"),
+      fileType: z.enum(['docs', 'sheets']).describe("File type: 'docs' (documents), 'sheets' (spreadsheets)")
     },
     async ({ fileId, fileType }) => {
       try {
@@ -352,43 +352,43 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
   // グラフ作成ツール
   server.tool(
     "g_drive_create_chart",
-    "指定されたファイルにグラフを作成する（ドキュメント、スプレッドシート、スライド対応）",
+    "Create a chart in the specified file (supports documents, spreadsheets, and slides)",
     {
-      fileId: z.string().describe("グラフを作成するファイルのID"),
+      fileId: z.string().describe("ID of the file to create chart in"),
       fileType: z.enum(['docs', 'sheets', 'presentations']).describe(
-        "ファイルの種類: 'docs'(ドキュメント), 'sheets'(スプレッドシート), 'presentations'(スライド)"
+        "File type: 'docs' (documents), 'sheets' (spreadsheets), 'presentations' (slides)"
       ),
       chartType: z.enum(['COLUMN', 'LINE', 'PIE', 'BAR', 'SCATTER']).describe(
-        "グラフの種類: 'COLUMN'(縦棒), 'LINE'(線), 'PIE'(円), 'BAR'(横棒), 'SCATTER'(散布図)"
+        "Chart type: 'COLUMN' (vertical bar), 'LINE' (line), 'PIE' (pie), 'BAR' (horizontal bar), 'SCATTER' (scatter plot)"
       ),
-      title: z.string().optional().describe("グラフのタイトル"),
+      title: z.string().optional().describe("Chart title"),
       
       // ドキュメント用パラメータ
-      sourceSheetId: z.string().optional().describe("ドキュメント・スライドの場合：データソースとなるスプレッドシートのID"),
-      sourceRange: z.string().optional().describe("ドキュメント・スライドの場合：データソースの範囲（例: A1:B10）"),
-      insertIndex: z.number().optional().describe("ドキュメントの場合：挿入位置（文字インデックス）"),
+      sourceSheetId: z.string().optional().describe("For documents and slides: ID of the spreadsheet to use as data source"),
+      sourceRange: z.string().optional().describe("For documents and slides: range of data source (e.g., A1:B10)"),
+      insertIndex: z.number().optional().describe("For documents: insertion position (character index)"),
       
       // スプレッドシート用パラメータ
-      sheetId: z.number().optional().describe("スプレッドシートの場合：対象シートのID"),
-      dataRange: z.string().optional().describe("スプレッドシートの場合：グラフのデータ範囲（例: A1:B10）"),
+      sheetId: z.number().optional().describe("For spreadsheets: target sheet ID"),
+      dataRange: z.string().optional().describe("For spreadsheets: data range for chart (e.g., A1:B10)"),
       position: z.object({
         row: z.number(),
         column: z.number()
-      }).optional().describe("スプレッドシートの場合：グラフの配置位置"),
+      }).optional().describe("For spreadsheets: chart placement position"),
       
       // スライド用パラメータ
-      slideIndex: z.number().optional().describe("スライドの場合：対象スライドのインデックス（0から開始）"),
+      slideIndex: z.number().optional().describe("For slides: target slide index (starting from 0)"),
       bounds: z.object({
         x: z.number(),
         y: z.number(),
         width: z.number(),
         height: z.number()
-      }).optional().describe("スライドの場合：グラフの位置とサイズ"),
-      existingChartId: z.number().optional().describe("スライドの場合：既存のスプレッドシートチャートIDを指定してリンク"),
+      }).optional().describe("For slides: chart position and size"),
+      existingChartId: z.number().optional().describe("For slides: link by specifying existing spreadsheet chart ID"),
       
       // 軸タイトルパラメータ（スプレッドシート用）
-      xAxisTitle: z.string().optional().describe("スプレッドシートの場合：X軸のタイトル（省略時は自動推定）"),
-      yAxisTitle: z.string().optional().describe("スプレッドシートの場合：Y軸のタイトル（省略時は自動推定）")
+      xAxisTitle: z.string().optional().describe("For spreadsheets: X-axis title (auto-inferred if omitted)"),
+      yAxisTitle: z.string().optional().describe("For spreadsheets: Y-axis title (auto-inferred if omitted)")
     },
     async ({ 
       fileId, 
@@ -460,13 +460,13 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
   // 新規作成ツール（タブ、シート、スライド）
   server.tool(
     "g_drive_create_new_element",
-    "指定されたファイルに新規要素を作成する（ドキュメント：API制限によりタブ作成不可、スプレッドシート：新規シート作成、スライド：新規スライド作成）",
+    "Create new elements in the specified file (Documents: tab creation unavailable due to API limitations, Spreadsheets: create new sheets, Slides: create new slides)",
     {
-      fileId: z.string().describe("新規作成対象ファイルのID"),
+      fileId: z.string().describe("ID of the target file for new creation"),
       fileType: z.enum(['docs', 'sheets', 'presentations']).describe(
-        "ファイルの種類: 'docs'(ドキュメント - 新規タブ作成), 'sheets'(スプレッドシート - 新規シート作成), 'presentations'(スライド - 新規スライド作成)"
+        "File type: 'docs' (documents - create new tab), 'sheets' (spreadsheets - create new sheet), 'presentations' (slides - create new slide)"
       ),
-      title: z.string().describe("新規作成する要素のタイトル（タブ名、シート名、スライドタイトル）")
+      title: z.string().describe("Title of the new element to create (tab name, sheet name, slide title)")
     },
     async ({ fileId, fileType, title }) => {
       try {
@@ -491,14 +491,14 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
   // 部分コピーツール
   server.tool(
     "g_drive_copy_element",
-    "指定されたファイルの部分をコピーする（スプレッドシートのシートコピーのみ実装済み）",
+    "Copy parts of the specified file (supports spreadsheet sheet copying and slide copying)",
     {
-      fileId: z.string().describe("コピー対象ファイルのID"),
+      fileId: z.string().describe("ID of the target file to copy from"),
       fileType: z.enum(['docs', 'sheets', 'presentations']).describe(
-        "ファイルの種類: 'docs'(ドキュメント - 未実装), 'sheets'(スプレッドシート - 実装済み), 'presentations'(スライド - 未実装)"
+        "File type: 'docs' (documents - not implemented), 'sheets' (spreadsheets - implemented), 'presentations' (slides - implemented)"
       ),
-      sourcePartId: z.string().describe("コピー元の部分ID（スプレッドシートの場合：シートID）"),
-      newPartName: z.string().optional().describe("新しい部分の名前（スプレッドシートの場合：新しいシート名）")
+      sourcePartId: z.string().describe("Source part ID (for spreadsheets: sheet ID, for slides: slide ID)"),
+      newPartName: z.string().optional().describe("Name of the new part (for spreadsheets: new sheet name, for slides: new slide name)")
     },
     async ({ fileId, fileType, sourcePartId, newPartName }) => {
       try {

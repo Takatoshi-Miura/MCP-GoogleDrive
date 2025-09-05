@@ -1,7 +1,7 @@
 {
   "name": "mcp-google-drive",
   "version": "1.0.0",
-  "description": "Model Context Protocol サーバー for Google Drive",
+  "description": "Model Context Protocol server for Google Drive",
   "main": "index.js",
   "type": "module",
   "scripts": {
