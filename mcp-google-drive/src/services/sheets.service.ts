@@ -803,4 +803,70 @@ export class SheetsService {
       };
     }
   }
+
+  // セル範囲を結合する関数
+  async mergeCells(spreadsheetId: string, range: string): Promise<any> {
+    const sheets = google.sheets({ version: "v4", auth: this.auth });
+    try {
+      // 範囲を解析してシート名とセル範囲を取得
+      const [sheetName, cellRange] = range.split('!');
+      if (!sheetName || !cellRange) {
+        throw new Error(`無効な範囲形式です。正しい形式: シート名!A1:B2`);
+      }
+
+      // シート情報を取得してsheetIdを取得
+      const spreadsheetInfo = await sheets.spreadsheets.get({
+        spreadsheetId,
+        fields: "sheets.properties"
+      });
+      
+      const sheet = spreadsheetInfo.data.sheets?.find(s => s.properties?.title === sheetName);
+      if (!sheet || !sheet.properties) {
+        throw new Error(`シート "${sheetName}" が見つかりません`);
+      }
+      
+      const sheetId = sheet.properties.sheetId;
+
+      // セル範囲を解析してstartIndex/endIndexに変換
+      const { startRow, endRow, startCol, endCol } = this.parseDataRange(cellRange);
+
+      const response = await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              mergeCells: {
+                range: {
+                  sheetId: sheetId,
+                  startRowIndex: startRow,
+                  endRowIndex: endRow,
+                  startColumnIndex: startCol,
+                  endColumnIndex: endCol + 1
+                },
+                mergeType: 'MERGE_ALL'
+              }
+            }
+          ]
+        }
+      });
+
+      return {
+        status: 'success',
+        message: `シート "${sheetName}" の範囲 ${cellRange} のセルを結合しました`,
+        spreadsheetId: spreadsheetId,
+        sheetName: sheetName,
+        sheetId: sheetId,
+        range: cellRange,
+        response: response.data
+      };
+    } catch (error) {
+      console.error("セル結合エラー:", error);
+      return {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'セル結合に失敗しました',
+        spreadsheetId,
+        range
+      };
+    }
+  }
 } 

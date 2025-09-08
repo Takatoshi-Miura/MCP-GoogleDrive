@@ -520,4 +520,34 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
       }
     }
   );
+
+  // セル結合ツール
+  server.tool(
+    "g_drive_merge_cell",
+    "Merge specified cell ranges in spreadsheets",
+    {
+      fileId: z.string().describe("ID of the spreadsheet file"),
+      fileType: z.enum(['sheets']).describe("File type: 'sheets' (spreadsheets only)"),
+      range: z.string().describe("Cell range to merge (e.g., Sheet1!A1:B2)")
+    },
+    async ({ fileId, fileType, range }) => {
+      try {
+        const auth = await getAuthClient();
+        const authError = checkAuthAndReturnError(auth);
+        if (authError) return authError;
+
+        // スプレッドシートのみサポート
+        if (fileType !== 'sheets') {
+          return createUnsupportedFileTypeError(fileType);
+        }
+
+        const sheetsService = new SheetsService(auth);
+        const result = await sheetsService.mergeCells(fileId, range);
+
+        return createSuccessResponse(result);
+      } catch (error: any) {
+        return createErrorResponse("セル結合に失敗しました", error);
+      }
+    }
+  );
 } 
