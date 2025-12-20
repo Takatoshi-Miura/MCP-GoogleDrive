@@ -1,6 +1,7 @@
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import { TabInfo, DocumentInfo } from "../types/index.js";
+import { parseMarkdownContent, containsMarkdownTable, TableSegment } from "../utils/markdown-table-parser.js";
 
 export class DocsService {
   constructor(private auth: OAuth2Client) {}
@@ -225,6 +226,242 @@ export class DocsService {
       console.error("Googleドキュメントへのテキスト挿入エラー:", error);
       throw error;
     }
+  }
+
+  // Googleドキュメントにテキストと表を挿入する関数（マークダウン表対応）
+  async insertContentToDoc(
+    documentId: string,
+    location: number,
+    text: string,
+    tabId?: string
+  ): Promise<any> {
+    const docs = google.docs({ version: "v1", auth: this.auth });
+
+    try {
+      // マークダウン表を含まない場合は従来のテキスト挿入
+      if (!containsMarkdownTable(text)) {
+        return await this.insertTextToDoc(documentId, location, text, tabId);
+      }
+
+      // マークダウンコンテンツをパース
+      const segments = parseMarkdownContent(text);
+
+      // 挿入位置を検証
+      const validation = await this.validateInsertPosition(documentId, location, tabId);
+      if (!validation.isValid) {
+        throw new Error(validation.errorMessage || "無効な挿入位置です");
+      }
+
+      let actualLocation = location === -1 ? validation.maxIndex : location;
+      let tablesInserted = 0;
+
+      // セグメントを逆順で処理（Google Docs APIでは後ろから挿入することで位置ずれを防ぐ）
+      const reversedSegments = [...segments].reverse();
+
+      for (const segment of reversedSegments) {
+        if (segment.type === 'text') {
+          // テキストセグメントの挿入
+          await this.insertTextSegment(docs, documentId, actualLocation, segment.content, tabId);
+        } else if (segment.type === 'table') {
+          // 表セグメントの挿入
+          await this.insertTableSegment(docs, documentId, actualLocation, segment, tabId);
+          tablesInserted++;
+        }
+      }
+
+      return {
+        documentId,
+        targetTabId: tabId || 'first_tab',
+        originalLocation: location,
+        actualLocation: actualLocation,
+        requestedTabId: tabId,
+        segmentsInserted: segments.length,
+        tablesInserted: tablesInserted,
+        validationInfo: {
+          maxIndex: validation.maxIndex,
+          tabTitle: validation.tabTitle
+        }
+      };
+    } catch (error) {
+      console.error("Googleドキュメントへのコンテンツ挿入エラー:", error);
+      throw error;
+    }
+  }
+
+  // テキストセグメントを挿入するヘルパーメソッド
+  private async insertTextSegment(
+    docs: any,
+    documentId: string,
+    index: number,
+    text: string,
+    tabId?: string
+  ): Promise<void> {
+    const request: any = {
+      insertText: {
+        location: { index: index },
+        text: text + '\n'  // 改行を追加して次のセグメントと分離
+      }
+    };
+
+    if (tabId) {
+      request.insertText.location.tabId = tabId;
+    }
+
+    await docs.documents.batchUpdate({
+      documentId,
+      requestBody: {
+        requests: [request]
+      }
+    });
+  }
+
+  // 表セグメントを挿入するヘルパーメソッド
+  private async insertTableSegment(
+    docs: any,
+    documentId: string,
+    index: number,
+    table: TableSegment,
+    tabId?: string
+  ): Promise<void> {
+    // Step 1: 空の表を挿入
+    const insertTableRequest: any = {
+      insertTable: {
+        rows: table.rows,
+        columns: table.columns,
+        location: { index: index }
+      }
+    };
+
+    if (tabId) {
+      insertTableRequest.insertTable.location.tabId = tabId;
+    }
+
+    await docs.documents.batchUpdate({
+      documentId,
+      requestBody: {
+        requests: [insertTableRequest]
+      }
+    });
+
+    // Step 2: 表構造を取得してセルインデックスを計算
+    const docResponse = await docs.documents.get({
+      documentId,
+      includeTabsContent: true
+    });
+
+    // 挿入位置以降の表を探す
+    const cellIndices = this.findTableCellIndices(docResponse.data, index, table.rows, table.columns, tabId);
+
+    if (cellIndices.length === 0) {
+      console.warn("表のセルインデックスを取得できませんでした");
+      return;
+    }
+
+    // Step 3: セルにテキストを挿入（逆順で処理）
+    const cellTextRequests: any[] = [];
+
+    for (let r = table.rows - 1; r >= 0; r--) {
+      for (let c = table.columns - 1; c >= 0; c--) {
+        const cellContent = table.cells[r][c];
+        if (cellContent) {
+          const cellIndex = cellIndices[r]?.[c];
+          if (cellIndex !== undefined) {
+            const request: any = {
+              insertText: {
+                location: { index: cellIndex },
+                text: cellContent
+              }
+            };
+
+            if (tabId) {
+              request.insertText.location.tabId = tabId;
+            }
+
+            cellTextRequests.push(request);
+          }
+        }
+      }
+    }
+
+    if (cellTextRequests.length > 0) {
+      await docs.documents.batchUpdate({
+        documentId,
+        requestBody: {
+          requests: cellTextRequests
+        }
+      });
+    }
+  }
+
+  // ドキュメント構造から表のセルインデックスを取得するヘルパーメソッド
+  private findTableCellIndices(
+    document: any,
+    insertedIndex: number,
+    rows: number,
+    columns: number,
+    tabId?: string
+  ): number[][] {
+    const cellIndices: number[][] = [];
+
+    // タブを取得（タブIDが指定されている場合はそのタブ、なければ最初のタブ）
+    let bodyContent: any[] = [];
+
+    if (document.tabs && document.tabs.length > 0) {
+      if (tabId) {
+        // 指定されたタブを検索
+        const findTab = (tabs: any[]): any => {
+          for (const tab of tabs) {
+            if (tab.tabProperties?.tabId === tabId) {
+              return tab;
+            }
+            if (tab.childTabs) {
+              const found = findTab(tab.childTabs);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        const targetTab = findTab(document.tabs);
+        if (targetTab?.documentTab?.body?.content) {
+          bodyContent = targetTab.documentTab.body.content;
+        }
+      } else {
+        // 最初のタブを使用
+        const firstTab = document.tabs[0];
+        if (firstTab?.documentTab?.body?.content) {
+          bodyContent = firstTab.documentTab.body.content;
+        }
+      }
+    } else if (document.body?.content) {
+      bodyContent = document.body.content;
+    }
+
+    // 挿入位置以降で最初の表を検索
+    for (const element of bodyContent) {
+      if (element.table && element.startIndex >= insertedIndex) {
+        const table = element.table;
+
+        if (table.tableRows) {
+          for (let r = 0; r < Math.min(table.tableRows.length, rows); r++) {
+            cellIndices[r] = [];
+            const row = table.tableRows[r];
+
+            if (row.tableCells) {
+              for (let c = 0; c < Math.min(row.tableCells.length, columns); c++) {
+                const cell = row.tableCells[c];
+                // セルの最初のコンテンツの開始インデックスを取得
+                if (cell.content && cell.content[0]?.startIndex !== undefined) {
+                  cellIndices[r][c] = cell.content[0].startIndex;
+                }
+              }
+            }
+          }
+        }
+        break;  // 最初の表のみ処理
+      }
+    }
+
+    return cellIndices;
   }
 
   // Googleドキュメントのタブ一覧を取得する関数

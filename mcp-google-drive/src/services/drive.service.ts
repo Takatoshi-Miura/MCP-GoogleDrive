@@ -548,4 +548,49 @@ export class DriveService {
       };
     }
   }
+
+  // ファイルが指定日時以降に変更されたかチェックする機能
+  async checkFileModified(fileId: string, since: string): Promise<{
+    status: string;
+    fileId: string;
+    fileName: string;
+    isModified: boolean;
+    checkedSince: string;
+    lastModifiedTime: string;
+    lastModifyingUser?: { displayName: string; emailAddress: string };
+    webViewLink: string;
+  }> {
+    const drive = google.drive({ version: "v3", auth: this.auth });
+
+    try {
+      // ファイル情報を取得
+      const response = await drive.files.get({
+        fileId: fileId,
+        fields: "id,name,modifiedTime,lastModifyingUser,webViewLink",
+        supportsAllDrives: true
+      });
+
+      const file = response.data;
+      const sinceDate = new Date(since);
+      const modifiedDate = new Date(file.modifiedTime as string);
+      const isModified = modifiedDate > sinceDate;
+
+      return {
+        status: "success",
+        fileId: file.id as string,
+        fileName: file.name as string,
+        isModified: isModified,
+        checkedSince: since,
+        lastModifiedTime: file.modifiedTime as string,
+        lastModifyingUser: file.lastModifyingUser ? {
+          displayName: file.lastModifyingUser.displayName as string,
+          emailAddress: file.lastModifyingUser.emailAddress as string
+        } : undefined,
+        webViewLink: file.webViewLink as string
+      };
+    } catch (error) {
+      console.error("ファイル変更チェックエラー:", error);
+      throw error;
+    }
+  }
 } 

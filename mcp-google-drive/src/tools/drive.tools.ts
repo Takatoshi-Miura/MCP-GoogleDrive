@@ -192,14 +192,14 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
   // 統合的なファイル値挿入ツール
   server.tool(
     "g_drive_insert_value",
-    "Insert values into documents, spreadsheets, or slides (calls the appropriate tool based on file type)",
+    "Insert values into documents, spreadsheets, or slides (calls the appropriate tool based on file type). For documents: Markdown table format (| col1 | col2 |) is automatically detected and inserted as native Google Docs table.",
     {
       fileId: z.string().describe("ID of the target file for insertion"),
       fileType: z.enum(['docs', 'sheets', 'presentations']).describe("File type: 'docs' (documents), 'sheets' (spreadsheets), 'presentations' (slides)"),
       // ドキュメント用パラメータ
       tabId: z.string().optional().describe("For documents: target tab ID (defaults to first tab if omitted)"),
       location: z.number().optional().describe("For documents: insertion position (character index, -1 for automatic insertion at end)"),
-      text: z.string().optional().describe("For documents and slides: text to insert"),
+      text: z.string().optional().describe("For documents and slides: text to insert. For documents, markdown table format is automatically converted to native table."),
       // スプレッドシート用パラメータ
       range: z.string().optional().describe("For spreadsheets: insertion range (e.g., Sheet1!A1)"),
       values: z.array(z.array(z.any())).optional().describe("For spreadsheets: 2D array of values to insert"),
@@ -226,11 +226,17 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
           }
 
           const docsService = new DocsService(auth);
-          const result = await docsService.insertTextToDoc(fileId, location, text, tabId);
-          
+          // マークダウン表対応: insertContentToDoc を使用
+          const result = await docsService.insertContentToDoc(fileId, location, text, tabId);
+
+          // 表が挿入された場合はメッセージを変更
+          const message = result.tablesInserted > 0
+            ? `ドキュメントにテキストと${result.tablesInserted}個の表を挿入しました`
+            : "ドキュメントにテキストを挿入しました";
+
           return createSuccessResponse({
             status: "success",
-            message: "ドキュメントにテキストを挿入しました",
+            message: message,
             fileType: "docs",
             result
           });
@@ -547,6 +553,30 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
         return createSuccessResponse(result);
       } catch (error: any) {
         return createErrorResponse("セル結合に失敗しました", error);
+      }
+    }
+  );
+
+  // ファイル変更チェックツール
+  server.tool(
+    "g_drive_check_file_modified",
+    "Check if a Google Drive file has been modified since a specified date",
+    {
+      fileId: z.string().describe("ID of the file to check"),
+      since: z.string().describe("Check for modifications after this date/time (ISO 8601 format, e.g., '2025-01-01' or '2025-01-01T09:00:00Z')")
+    },
+    async ({ fileId, since }) => {
+      try {
+        const auth = await getAuthClient();
+        const authError = checkAuthAndReturnError(auth);
+        if (authError) return authError;
+
+        const driveService = new DriveService(auth);
+        const result = await driveService.checkFileModified(fileId, since);
+
+        return createSuccessResponse(result);
+      } catch (error: any) {
+        return createErrorResponse("ファイル変更チェックに失敗しました", error);
       }
     }
   );
