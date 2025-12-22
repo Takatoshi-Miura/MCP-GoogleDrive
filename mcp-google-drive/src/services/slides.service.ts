@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
+import { parseMarkdownContent, containsMarkdownTable, TableSegment } from "../utils/markdown-table-parser.js";
 
 export class SlidesService {
   constructor(private auth: OAuth2Client) {}
@@ -553,8 +554,8 @@ export class SlidesService {
     }
   }
 
-  // スライドにテキストを挿入する関数
-  async insertTextToSlide(
+  // スライドにシンプルなテキストを挿入する関数（マークダウン表非対応版）
+  private async insertSimpleTextToSlide(
     presentationId: string,
     slideIndex: number,
     text: string,
@@ -636,6 +637,179 @@ export class SlidesService {
       };
     } catch (error) {
       console.error("スライドへのテキスト挿入エラー:", error);
+      throw error;
+    }
+  }
+
+  // スライドにテキストを挿入する関数（マークダウン表対応）
+  async insertTextToSlide(
+    presentationId: string,
+    slideIndex: number,
+    text: string,
+    bounds?: { x?: number; y?: number; width?: number; height?: number }
+  ): Promise<any> {
+    // マークダウン表が含まれているかチェック
+    if (!containsMarkdownTable(text)) {
+      // マークダウン表がない場合は従来の単純なテキスト挿入
+      return await this.insertSimpleTextToSlide(presentationId, slideIndex, text, bounds);
+    }
+
+    // マークダウン表が含まれている場合はコンテンツ挿入
+    return await this.insertContentToSlide(presentationId, slideIndex, text, bounds);
+  }
+
+  // スライドにコンテンツ（テキスト+マークダウン表）を挿入する関数
+  private async insertContentToSlide(
+    presentationId: string,
+    slideIndex: number,
+    text: string,
+    bounds?: { x?: number; y?: number; width?: number; height?: number }
+  ): Promise<any> {
+    const slides = google.slides({ version: "v1", auth: this.auth });
+
+    try {
+      // マークダウンコンテンツをパース
+      const segments = parseMarkdownContent(text);
+
+      // プレゼンテーションの情報を取得してスライドIDを取得
+      const presentation = await slides.presentations.get({
+        presentationId,
+      });
+
+      if (!presentation.data.slides || slideIndex >= presentation.data.slides.length) {
+        throw new Error(`スライドインデックス ${slideIndex} は範囲外です`);
+      }
+
+      const slideId = presentation.data.slides[slideIndex].objectId!;
+
+      // 初期位置とデフォルト値を設定
+      let currentY = bounds?.y || 100;
+      const defaultX = bounds?.x || 100;
+      const defaultWidth = bounds?.width || 400;
+
+      let tablesInserted = 0;
+      const allRequests: any[] = [];
+
+      // セグメントを順次処理（スライドでは前から順に配置）
+      for (const segment of segments) {
+        if (segment.type === 'text') {
+          const textBoxHeight = bounds?.height || 100;
+          const textBoxId = `textbox_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+
+          // テキストボックスを作成
+          allRequests.push({
+            createShape: {
+              objectId: textBoxId,
+              shapeType: "TEXT_BOX",
+              elementProperties: {
+                pageObjectId: slideId,
+                size: {
+                  width: { magnitude: defaultWidth, unit: "PT" },
+                  height: { magnitude: textBoxHeight, unit: "PT" }
+                },
+                transform: {
+                  scaleX: 1,
+                  scaleY: 1,
+                  translateX: defaultX,
+                  translateY: currentY,
+                  unit: "PT"
+                }
+              }
+            }
+          });
+
+          // テキストを挿入
+          allRequests.push({
+            insertText: {
+              objectId: textBoxId,
+              text: segment.content
+            }
+          });
+
+          currentY += textBoxHeight + 20; // スペーシングを追加
+
+        } else if (segment.type === 'table') {
+          const tableId = `table_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+
+          // 表のサイズを計算
+          const cellHeight = 40; // デフォルトのセル高さ
+          const tableHeight = cellHeight * segment.rows;
+
+          // 表を作成
+          allRequests.push({
+            createTable: {
+              objectId: tableId,
+              elementProperties: {
+                pageObjectId: slideId,
+                size: {
+                  width: { magnitude: defaultWidth, unit: "PT" },
+                  height: { magnitude: tableHeight, unit: "PT" }
+                },
+                transform: {
+                  scaleX: 1,
+                  scaleY: 1,
+                  translateX: defaultX,
+                  translateY: currentY,
+                  unit: "PT"
+                }
+              },
+              rows: segment.rows,
+              columns: segment.columns
+            }
+          });
+
+          tablesInserted++;
+          currentY += tableHeight + 20; // スペーシングを追加
+        }
+      }
+
+      // バッチ更新を実行（シェイプと表の作成）
+      await slides.presentations.batchUpdate({
+        presentationId,
+        requestBody: { requests: allRequests }
+      });
+
+      // 表が挿入された場合、プレゼンテーションを再取得してセルテキストを挿入
+      if (tablesInserted > 0) {
+        const updatedPresentation = await slides.presentations.get({ presentationId });
+        const slide = updatedPresentation.data.slides![slideIndex];
+
+        // 表を見つけてセルテキストを挿入
+        let tableIndex = 0;
+        for (const segment of segments) {
+          if (segment.type === 'table') {
+            const cellTextRequests = await this.createCellTextRequests(
+              slide,
+              segment,
+              tableIndex
+            );
+
+            if (cellTextRequests.length > 0) {
+              await slides.presentations.batchUpdate({
+                presentationId,
+                requestBody: { requests: cellTextRequests }
+              });
+            }
+
+            tableIndex++;
+          }
+        }
+      }
+
+      return {
+        status: 'success',
+        message: tablesInserted > 0
+          ? `スライドにテキストと${tablesInserted}個の表を挿入しました`
+          : 'スライドにテキストを挿入しました',
+        presentationId,
+        slideIndex,
+        slideId,
+        segmentsInserted: segments.length,
+        tablesInserted
+      };
+
+    } catch (error) {
+      console.error("スライドへのコンテンツ挿入エラー:", error);
       throw error;
     }
   }
@@ -754,5 +928,56 @@ export class SlidesService {
         newSlideTitle
       };
     }
+  }
+
+  // 表のセルにテキストを挿入するリクエストを生成するヘルパーメソッド
+  private async createCellTextRequests(
+    slide: any,
+    table: TableSegment,
+    tableIndex: number
+  ): Promise<any[]> {
+    const requests: any[] = [];
+
+    // スライド要素から表を抽出
+    const tables = slide.pageElements?.filter((el: any) => el.table) || [];
+    if (tableIndex >= tables.length) {
+      console.warn(`Table index ${tableIndex} not found in slide`);
+      return [];
+    }
+
+    const targetTable = tables[tableIndex].table;
+
+    // セルを走査してテキスト挿入リクエストを生成
+    for (let r = 0; r < Math.min(table.rows, targetTable.tableRows?.length || 0); r++) {
+      const row = targetTable.tableRows[r];
+      for (let c = 0; c < Math.min(table.columns, row.tableCells?.length || 0); c++) {
+        const cell = row.tableCells[c];
+        const cellText = table.cells[r][c];
+
+        if (cellText && cell.text?.textElements) {
+          // セル内のテキスト要素を取得
+          const textElement = cell.text.textElements[0];
+          if (textElement?.endIndex !== undefined) {
+            // セルのテキストコンテンツに挿入
+            const cellLocation = cell.location;
+            if (cellLocation?.rowIndex !== undefined && cellLocation?.columnIndex !== undefined) {
+              requests.push({
+                insertText: {
+                  objectId: tables[tableIndex].objectId,
+                  cellLocation: {
+                    rowIndex: cellLocation.rowIndex,
+                    columnIndex: cellLocation.columnIndex
+                  },
+                  text: cellText,
+                  insertionIndex: 0
+                }
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return requests;
   }
 } 

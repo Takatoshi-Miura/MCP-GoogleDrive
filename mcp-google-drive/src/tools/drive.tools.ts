@@ -192,14 +192,14 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
   // 統合的なファイル値挿入ツール
   server.tool(
     "g_drive_insert_value",
-    "Insert values into documents, spreadsheets, or slides (calls the appropriate tool based on file type). For documents: Markdown table format (| col1 | col2 |) is automatically detected and inserted as native Google Docs table.",
+    "Insert values into documents, spreadsheets, or slides (calls the appropriate tool based on file type). For documents and slides: Markdown table format (| col1 | col2 |) is automatically detected and inserted as native table.",
     {
       fileId: z.string().describe("ID of the target file for insertion"),
       fileType: z.enum(['docs', 'sheets', 'presentations']).describe("File type: 'docs' (documents), 'sheets' (spreadsheets), 'presentations' (slides)"),
       // ドキュメント用パラメータ
       tabId: z.string().optional().describe("For documents: target tab ID (defaults to first tab if omitted)"),
       location: z.number().optional().describe("For documents: insertion position (character index, -1 for automatic insertion at end)"),
-      text: z.string().optional().describe("For documents and slides: text to insert. For documents, markdown table format is automatically converted to native table."),
+      text: z.string().optional().describe("For documents and slides: text to insert. Markdown table format is automatically converted to native table."),
       // スプレッドシート用パラメータ
       range: z.string().optional().describe("For spreadsheets: insertion range (e.g., Sheet1!A1)"),
       values: z.array(z.array(z.any())).optional().describe("For spreadsheets: 2D array of values to insert"),
@@ -275,10 +275,15 @@ export function registerDriveTools(server: McpServer, getAuthClient: () => Promi
 
           const slidesService = new SlidesService(auth);
           const result = await slidesService.insertTextToSlide(fileId, slideIndex, text, bounds);
-          
+
+          // 表が挿入された場合はメッセージを変更
+          const message = result.tablesInserted > 0
+            ? `スライドにテキストと${result.tablesInserted}個の表を挿入しました`
+            : "スライドにテキストを挿入しました";
+
           return createSuccessResponse({
             status: "success",
-            message: "スライドにテキストを挿入しました",
+            message: message,
             fileType: "presentations",
             result
           });
