@@ -689,6 +689,7 @@ export class SlidesService {
 
       let tablesInserted = 0;
       const allRequests: any[] = [];
+      const createdTableIds: string[] = []; // 作成した表のIDを追跡
 
       // セグメントを順次処理（スライドでは前から順に配置）
       for (const segment of segments) {
@@ -758,6 +759,7 @@ export class SlidesService {
             }
           });
 
+          createdTableIds.push(tableId); // 作成した表のIDを保存
           tablesInserted++;
           currentY += tableHeight + 20; // スペーシングを追加
         }
@@ -769,19 +771,16 @@ export class SlidesService {
         requestBody: { requests: allRequests }
       });
 
-      // 表が挿入された場合、プレゼンテーションを再取得してセルテキストを挿入
+      // 表が挿入された場合、保存したIDを使用してセルテキストを挿入
       if (tablesInserted > 0) {
-        const updatedPresentation = await slides.presentations.get({ presentationId });
-        const slide = updatedPresentation.data.slides![slideIndex];
-
         // 表を見つけてセルテキストを挿入
         let tableIndex = 0;
         for (const segment of segments) {
           if (segment.type === 'table') {
-            const cellTextRequests = await this.createCellTextRequests(
-              slide,
-              segment,
-              tableIndex
+            const tableObjectId = createdTableIds[tableIndex];
+            const cellTextRequests = this.createCellTextRequestsById(
+              tableObjectId,
+              segment
             );
 
             if (cellTextRequests.length > 0) {
@@ -930,50 +929,31 @@ export class SlidesService {
     }
   }
 
-  // 表のセルにテキストを挿入するリクエストを生成するヘルパーメソッド
-  private async createCellTextRequests(
-    slide: any,
-    table: TableSegment,
-    tableIndex: number
-  ): Promise<any[]> {
+  // 表のセルにテキストを挿入するリクエストを生成するヘルパーメソッド（IDを直接指定する版）
+  private createCellTextRequestsById(
+    tableObjectId: string,
+    table: TableSegment
+  ): any[] {
     const requests: any[] = [];
 
-    // スライド要素から表を抽出
-    const tables = slide.pageElements?.filter((el: any) => el.table) || [];
-    if (tableIndex >= tables.length) {
-      console.warn(`Table index ${tableIndex} not found in slide`);
-      return [];
-    }
-
-    const targetTable = tables[tableIndex].table;
-
     // セルを走査してテキスト挿入リクエストを生成
-    for (let r = 0; r < Math.min(table.rows, targetTable.tableRows?.length || 0); r++) {
-      const row = targetTable.tableRows[r];
-      for (let c = 0; c < Math.min(table.columns, row.tableCells?.length || 0); c++) {
-        const cell = row.tableCells[c];
+    for (let r = 0; r < table.rows; r++) {
+      for (let c = 0; c < table.columns; c++) {
         const cellText = table.cells[r][c];
 
-        if (cellText && cell.text?.textElements) {
-          // セル内のテキスト要素を取得
-          const textElement = cell.text.textElements[0];
-          if (textElement?.endIndex !== undefined) {
-            // セルのテキストコンテンツに挿入
-            const cellLocation = cell.location;
-            if (cellLocation?.rowIndex !== undefined && cellLocation?.columnIndex !== undefined) {
-              requests.push({
-                insertText: {
-                  objectId: tables[tableIndex].objectId,
-                  cellLocation: {
-                    rowIndex: cellLocation.rowIndex,
-                    columnIndex: cellLocation.columnIndex
-                  },
-                  text: cellText,
-                  insertionIndex: 0
-                }
-              });
+        // セルにテキストがある場合、ループ変数を使って直接cellLocationを指定
+        if (cellText) {
+          requests.push({
+            insertText: {
+              objectId: tableObjectId,
+              cellLocation: {
+                rowIndex: r,
+                columnIndex: c
+              },
+              text: cellText,
+              insertionIndex: 0
             }
-          }
+          });
         }
       }
     }
